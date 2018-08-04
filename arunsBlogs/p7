@@ -1,1 +1,201 @@
-# problem7
+## grp
+
+**************
+1a. sqoop import
+**************
+
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--query "select count(*) from orders"
+
+------------------------
+| count(*)             | 
+------------------------
+| 68883                | 
+------------------------
+
+sqoop import \
+--connect jdbc:mysql://10.0.2.15:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table orders \
+--as-avrodatafile \
+--num-mappers 1 \
+--target-dir /user/cloudera/problem7/prework \
+--delete-target-dir
+
+# make sure counts match
+
+hadoop fs -ls /user/cloudera/problem7/prework
+
+**************
+1b. hdfs command
+**************
+
+cd ~
+mkdir flumeAvro
+cd flumeAvro
+
+hadoop fs -get /user/cloudera/problem7/prework/* /home/cloudera/flumeAvro/
+
+*****************************
+1c. flume agent config (avro source)
+*****************************
+
+gedit flume.config
+
+#agent name = step1
+#webserver --> agent:[source --> channel--> sink] --> hdfs
+
+#name the source, channel, and sink
+step1.sources = avro_source
+step1.channels = mem_channel
+step1.sinks = file_sink
+
+#source info - avro
+step1.sources.avro_source.type = avro
+step1.sources.avro_source.port = 44444
+step1.sources.avro_source.bind = localhost
+
+#describe the sink = hdfs
+step1.sinks.file_sink.type = hdfs
+step1.sinks.file_sink.hdfs.path = /user/cloudera/problem7/sinkHDFS
+step1.sinks.file_sink.hdfs.fileType = DataStream
+step1.sinks.file_sink.hdfs.fileSuffix = .avro
+step1.sinks.file_sink.serializer = avro_event
+step1.sinks.file_sink.serializer.compressionCodec = snappy
+
+#describe the type of channel - jdbc --> use memory channel if jdbc channel does not work
+step1.channels.mem_channel.type = memory
+
+#bind the source and sink to the channel
+step1.sources.avro_source.channels = mem_channel
+step1.sinks.file_sink.channel = mem_channel
+
+*****************************
+flume help documentation
+*****************************
+
+[cloudera@quickstart ~]$ flume-ng help
+Usage: /usr/lib/flume-ng/bin/flume-ng <command> [options]...
+
+commands:
+  help                      display this help text
+  agent                     run a Flume agent
+  avro-client               run an avro Flume client
+  version                   show Flume version info
+
+global options:
+  --conf,-c <conf>          use configs in <conf> directory
+  --classpath,-C <cp>       append to the classpath
+  --dryrun,-d               do not actually start Flume, just print the command
+  --plugins-path <dirs>     colon-separated list of plugins.d directories. See the
+                            plugins.d section in the user guide for more details.
+                            Default: $FLUME_HOME/plugins.d
+  -Dproperty=value          sets a Java system property value
+  -Xproperty=value          sets a Java -X option
+
+agent options:
+  --name,-n <name>          the name of this agent (required)
+  --conf-file,-f <file>     specify a config file (required if -z missing)
+  --zkConnString,-z <str>   specify the ZooKeeper connection to use (required if -f missing)
+  --zkBasePath,-p <path>    specify the base path in ZooKeeper for agent configs
+  --no-reload-conf          do not reload config file if changed
+  --help,-h                 display help text
+
+avro-client options:
+  --rpcProps,-P <file>   RPC client properties file with server connection params
+  --host,-H <host>       hostname to which events will be sent
+  --port,-p <port>       port of the avro source
+  --dirname <dir>        directory to stream to avro source
+  --filename,-F <file>   text file to stream to avro source (default: std input)
+  --headerFile,-R <file> File containing event headers as key/value pairs on each new line
+  --help,-h              display help text
+
+  Either --rpcProps or both --host and --port must be specified.
+
+Note that if <conf> directory is specified, then it is always included first
+in the classpath.
+
+*****************************
+flume developer guide
+*****************************
+
+http://archive-primary.cloudera.com/cdh5/cdh/5/flume-ng-1.6.0-cdh5.10.1/FlumeUserGuide.html#hdfs-sink
+
+*****************************
+1d. execute flume agent
+*****************************
+
+flume-ng agent --name step1 --conf /home/cloudera/flumeAvro --conf-file /home/cloudera/flumeAvro/flume.config
+
+*****************************
+1e. execute flume avro client
+*****************************
+
+flume-ng avro-client -H localhost -p 44444 -F /home/cloudera/flumeAvro/part-m-00000.avro 
+
+# view avro hdfs stream
+hadoop fs -ls /user/cloudera/problem7/sinkHDFS
+
+*****************************
+2a. hdfs flume prep
+*****************************
+
+cd ~
+mkdir flumeLog
+cd flumeLog
+
+*****************************
+2b. config flume agent (exec source)
+*****************************
+
+# component names for agent
+a1.sources = r1
+a1.sinks = k1
+a1.channels = c1
+
+# describe and configure the source
+a1.sources.r1.type = exec
+a1.sources.r1.command = tail -F /opt/gen_logs/logs/access.log
+
+# describe the sink
+a1.sinks.k1.type = hdfs
+a1.sinks.k1.hdfs.path = /user/cloudera/problem7/step2
+a1.sinks.k1.hdfs.writeFormat = Text
+a1.sinks.k1.hdfs.fileType = DataStream
+
+# use a channel which buffers events in memory
+a1.channels.c1.type = memory
+a1.channels.c1.capacity = 1000
+a1.channels.c1.transactionCapacity = 200
+
+# bind source and sink to channel
+a1.sources.r1.channels = c1
+a1.sinks.k1.channel = c1
+
+*****************************
+2c. ingest logs
+*****************************
+
+# start streaming logs
+./start_logs.sh 
+
+# create hdfs sink directory
+hadoop fs -mkdir /user/cloudera/problem7/step2
+
+*****************************
+2d. execute flume agent
+*****************************
+
+flume-ng agent --name a1 --conf . --conf-file flume.config 
+
+#view stream write
+hadoop fs -ls /user/cloudera/problem7/step2
+
+#stop streaming logs
+./stop_logs.sh
+
+### grp
