@@ -1,0 +1,4558 @@
+### grp
+
+===========================================================================
+
+$$$ MYSQL SERVER $$$
+
+#get hostname:
+$ hostname
+$ hostname -i
+
+#connect to mysql:
+$ mysql -u <user> -p
+$ enter password:
+
+#show user:
+> select user();
+
+#show mysql hostname:
+> show variables where Variable_name in ('port', 'hostname');
+
+#show databases:
+> show databases;
+
+#switch to database:
+> use <database_name>;
+
+#show tables:
+> show tables;
+
+#table ddl
+> describe <table_name>;
+
+=====================================================================
+
+$$$ SQOOP $$$
+
+#list databases from source db
+sqoop list-databases \
+--connect jdbc:mysql://quickstart.cloudera:3306 \
+--username retail_dba \
+--password cloudera
+
+#list tables from source db
+sqoop list-tables \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera
+
+#run select query on source db
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--query "SELECT * FROM orders LIMIT 10"
+
+#run select count on source db
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--query "SELECT COUNT(*) FROM orders"
+
+#table import into target dir
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table order_items \
+--target-dir /user/cloudera/sqoop_demos/order_items
+
+#table import into warehouse dir (creates own directory for table specified)
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table order_items \
+--warehouse-dir /user/cloudera/sqoop_demos/tables
+
+***sqoop uses 4 mappers by default***
+
+#customize # of mappers to n
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table categories \
+--target-dir /user/cloudera/sqoop_demos/categories \
+--num-mappers 1
+
+#delete existing target dir and overwrite
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table order_items \
+--warehouse-dir /user/cloudera/sqoop_demos/tables \
+--delete-target-dir
+
+#append data into existing dir
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table order_items \
+--warehouse-dir /user/cloudera/sqoop_demos/tables \
+--append
+
+//Things to remember for split-by:
+	//Column should be indexed
+	//Values in field should be sparse
+	//Sequence Generator or evenly incremented
+	//Should not have NULL values
+
+#import table with no PK (must use -m 1 or --split-by)
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table table_nopk \
+--num-mappers 1 \
+--warehouse-dir /user/cloudera/sqoop_demos/tables
+
+#use split-by since no PK exists in table
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table table_nopk \
+--split-by order_item_order_id \
+--target-dir /user/cloudera/sqoop_demos/nopk_split
+
+#set autoreset mappers to 1 if no PK exists in table
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table table_nopk \
+--target-dir /user/cloudera/sqoop_demos/autoreset \
+--autoreset-to-one-mapper
+
+#quick help - sqoop help import
+
+#specifying file formats: 
+text (default) - text format
+sequence - binary file format
+avro - binary json format
+parquet - binary columnar format
+
+#sequence file import
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table order_items \
+--target-dir /user/cloudera/sqoop_demos/sequence \
+--num-mappers 2 \
+--as-sequencefile
+
+#avro file import
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table order_items \
+--target-dir /user/cloudera/sqoop_demos/avro \
+--num-mappers 3 \
+--as-avrodatafile
+
+#parquet file import
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table order_items \
+--target-dir /user/cloudera/sqoop_demos/parquet \
+--num-mappers 6 \
+--as-parquetfile
+
+#specifying compression:
+# cd /etc/hadoop/conf
+# vim core-site.xml or vim hdfs-site.xml
+
+    gzip - org.apache.hadoop.io.compress.GzipCodec
+    bzip2 - org.apache.hadoop.io.compress.BZip2Codec
+    LZO - com.hadoop.compression.lzo.LzopCodec
+    Snappy - org.apache.hadoop.io.compress.SnappyCodec
+    Deflate - org.apache.hadoop.io.compress.DeflateCodec
+
+#default gzip compression (check hdfs files have gz extension)
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table order_items \
+--target-dir /user/cloudera/sqoop_demos/text_compress \
+--num-mappers 2 \
+--as-textfile \
+--compress
+
+#use --compression-codec argument to compress with snappy (check hdfs files have snappy extension)
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table order_items \
+--target-dir /user/cloudera/sqoop_demos/text_snappy \
+--num-mappers 3 \
+--as-textfile \
+--compress \
+--compression-codec org.apache.hadoop.io.compress.SnappyCodec
+
+#sqoop boundary query import
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table order_items \
+--target-dir /user/cloudera/sqoop_demos/boundary \
+--boundary-query 'select min(order_item_id), max(order_item_id) from order_items where order_item_id > 99999'
+
+#sqoop select columns (no space after ,) from table import
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table order_items \
+--columns order_item_order_id,order_item_id,order_item_subtotal \
+--target-dir /user/cloudera/sqoop_demos/columns \
+--num-mappers 2
+
+#sqoop query with filter/joins import:
+(must specify --split-by clause if mappers > 1)
+(must add and \$CONDITIONS ... or where $CONDITIONS)
+(must use --target-dir when using --query)
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--target-dir /user/cloudera/sqoop_demos/query \
+--num-mappers 2 \
+--query "select o.*, sum(oi.order_item_subtotal) as order_revenue from orders o join order_items oi on o.order_id=oi.order_item_order_id and \$CONDITIONS group by o.order_id, o.order_date, o.order_customer_id, o.order_status" \
+--split-by order_id
+
+***--TABLE + --COLUMNS OR --QUERY***
+
+#dealing with NULLS (string and non-string) and specifying delimiters (fields and lines)
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table products_replica \
+--target-dir /user/cloudera/sqoop_demos/nulls \
+--null-non-string 9999 \
+--null-string 9999 \
+--fields-terminated-by "\t" \
+--lines-terminated-by ":"
+
+#where clause import
+sqoop import \
+-connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table orders \
+--where "order_date like '2014-02%'" \
+--target-dir /user/cloudera/sqoop_demos/where
+
+=====================================================================================
+
+$$$ HIVE $$$
+
+#connect to hive
+$ hive
+> show databases;
+> use <database_name>;
+> show tables;
+> create table <name> (col data_type);
+> select * from <name>;
+> drop table <name>;
+
+#connect to beeline
+$ cd /usr/lib/hive/bin/
+$ beeline
+> !connect jdbc:hive2://localhost:10000 cloudera cloudera org.apache.hive.jdbc.HiveDriver
+> show databases;
+> use <database_name>;
+> show tables;
+> create table <name> (col data_type);
+> select * from <name>;
+> drop table <name>;
+> !quit
+
+===============================================================================
+
+$$$ SQOOP + HIVE $$$
+
+#sqoop import to hive table
+(hdfs home dir is temp dir then sqoop creates hive table)
+(hive table data stored under /user/hive/warehouse/<db>/<table_name>/)
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table order_items \
+--hive-import \
+--hive-database demos \
+--hive-table order_items \
+--num-mappers 2
+
+#show table information
+$ beeline
+> !connect jdbc:hive2://localhost:10000 cloudera cloudera org.apache.hive.jdbc.HiveDriver
+> use <database_name>;
+> describe formatted <table_name>;
+# location example
+Location:| hdfs://quickstart.cloudera:8020/user/hive/warehouse/demos.db/order_items
+$ hdfs dfs -ls hdfs://quickstart.cloudera:8020/user/hive/warehouse/demos.db/order_items
+
+#default hive delim:
+field.delim  \u0001
+line.delim  \n
+serialization.format \u0001
+
+#sqoop import hive overwrite
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table order_items \
+--hive-import \
+--hive-database demos \
+--hive-table order_items \
+--hive-overwrite \
+--num-mappers 2
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table orders \
+--hive-import \
+--hive-database demos \
+--hive-table orders \
+--hive-overwrite \
+--num-mappers 2
+
+#import sqoop all tables from source schema to hdfs
+sqoop import-all-tables \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--warehouse-dir /user/cloudera/mysql \
+--autoreset-to-one-mapper
+
+#create hive table from query
+$ beeline
+> !connect jdbc:hive2://localhost:10000 cloudera cloudera org.apache.hive.jdbc.HiveDriver
+> use demos;
+> create table daily_revenue as
+select order_date, sum(order_item_subtotal) daily_revenue
+from orders o join order_items oi
+on o.order_id = oi.order_item_order_id
+where order_date like '2013-07%'
+group by order_date;
+
+#sqoop export hive table to RDBMS
+1. create table in RDBMS
+$ mysql -u retail_dba -p
+> use retail_db;
+> create table daily_revenue (order_date varchar(30), daily_revenue float);
+
+$ beeline
+> !connect jdbc:hive2://localhost:10000 cloudera cloudera org.apache.hive.jdbc.HiveDriver
+> use demos;
+> describe daily_revenue;
+> describe formatted daily_revenue;
+hdfs://quickstart.cloudera:8020/user/hive/warehouse/demos.db/daily_revenue
+
+#hive delimitter is control-A (^A) or \0001
+sqoop export \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username root \
+--password cloudera \
+--input-fields-terminated-by "\0001" \
+--table daily_revenue \
+--export-dir /user/hive/warehouse/demos.db/daily_revenue
+
+#mapping columns with sqoop export
+$ beeline
+> !connect jdbc:hive2://localhost:10000 cloudera cloudera org.apache.hive.jdbc.HiveDriver
+> use demos;
+> create table daily_revenue_desc (revenue float, order_date varchar(30), description varchar(200));
+
+sqoop export \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username root \
+--password cloudera \
+--input-fields-terminated-by "\0001" \
+--table daily_revenue_desc \
+--columns order_date,revenue \
+--export-dir /user/hive/warehouse/demos.db/daily_revenue \
+--num-mappers 1
+
+#stagging example
+$ beeline
+> !connect jdbc:hive2://localhost:10000 cloudera cloudera org.apache.hive.jdbc.HiveDriver
+> use demos;
+> insert into table daily_revenue select order_date, sum(order_item_subtotal) daily_revenue from orders join order_items on order_id=order_item_order_id group by order_date;
+> select count(*) from daily_revenue;
+
+$ mysql -u retail_dba -p
+> truncate table daily_revenue;
+> insert into daily_revenue values ("2014-07-01 00:00:00.0", 0);
+> select count(*) from daily_revenue;
+
+#create stage table in targeted RDBMS
+create table daily_revenue_stage (order_date varchar(30) primary key, revenue float);
+
+sqoop export \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username root \
+--password cloudera \
+--export-dir /user/hive/warehouse/demos.db/daily_revenue \
+--table daily_revenue \
+--staging-table daily_revenue_stage \
+--clear-staging-table \
+--input-fields-terminated-by "\0001"
+
+delete from daily_revenue_stage then ...
+export copies data from ...
+Hive table - daily_revenue --> mysql table - daily_revenue_stage
+insert into daily_revenue select * from daily_revenue_stage
+
+***if stage table is empty then import/export is successfull***
+***staging table used as identifier to maintain target table/error present***
+
+=================================================================================
+
+$$$ HDFS $$$
+
+hdfs
+
+namenode ui url:
+<hostname>:50070
+
+properties files:
+/etc/hadoop/conf/core-site.xml
+----------------------------
+fs.defaultFS = namenode ip address
+<configuration>
+  <property>
+    <name>fs.defaultFS</name>
+    <value>hdfs://quickstart.cloudera:8020</value>
+  </property>
+
+----------------------------------------
+
+/etc/hadoop/conf/hdfs-site.xml
+dfs.blocksize = chunk size (128MB default)
+dfs.replication = # of replications (default 3)
+
+Usage: hadoop fs [generic options]
+	[-appendToFile <localsrc> ... <dst>]
+	[-cat [-ignoreCrc] <src> ...]
+	[-checksum <src> ...]
+	[-chgrp [-R] GROUP PATH...]
+	[-chmod [-R] <MODE[,MODE]... | OCTALMODE> PATH...]
+	[-chown [-R] [OWNER][:[GROUP]] PATH...]
+	[-copyFromLocal [-f] [-p] [-l] <localsrc> ... <dst>]
+	[-copyToLocal [-p] [-ignoreCrc] [-crc] <src> ... <localdst>]
+	[-count [-q] [-h] [-v] [-x] <path> ...]
+	[-cp [-f] [-p | -p[topax]] <src> ... <dst>]
+	[-createSnapshot <snapshotDir> [<snapshotName>]]
+	[-deleteSnapshot <snapshotDir> <snapshotName>]
+	[-df [-h] [<path> ...]]
+	[-du [-s] [-h] [-x] <path> ...]
+	[-expunge]
+	[-find <path> ... <expression> ...]
+	[-get [-p] [-ignoreCrc] [-crc] <src> ... <localdst>]
+	[-getfacl [-R] <path>]
+	[-getfattr [-R] {-n name | -d} [-e en] <path>]
+	[-getmerge [-nl] <src> <localdst>]
+	[-help [cmd ...]]
+	[-ls [-C] [-d] [-h] [-q] [-R] [-t] [-S] [-r] [-u] [<path> ...]]
+	[-mkdir [-p] <path> ...]
+	[-moveFromLocal <localsrc> ... <dst>]
+	[-moveToLocal <src> <localdst>]
+	[-mv <src> ... <dst>]
+	[-put [-f] [-p] [-l] <localsrc> ... <dst>]
+	[-renameSnapshot <snapshotDir> <oldName> <newName>]
+	[-rm [-f] [-r|-R] [-skipTrash] <src> ...]
+	[-rmdir [--ignore-fail-on-non-empty] <dir> ...]
+	[-setfacl [-R] [{-b|-k} {-m|-x <acl_spec>} <path>]|[--set <acl_spec> <path>]]
+	[-setfattr {-n name [-v value] | -x name} <path>]
+	[-setrep [-R] [-w] <rep> <path> ...]
+	[-stat [format] <path> ...]
+	[-tail [-f] <file>]
+	[-test -[defsz] <path>]
+	[-text [-ignoreCrc] <src> ...]
+	[-touchz <path> ...]
+	[-usage [cmd ...]]
+
+Generic options supported are
+-conf <configuration file>     specify an application configuration file
+-D <property=value>            use value for given property
+-fs <local|namenode:port>      specify a namenode
+-jt <local|resourcemanager:port>    specify a ResourceManager
+-files <comma separated list of files>    specify comma separated files to be copied to the map reduce cluster
+-libjars <comma separated list of jars>    specify comma separated jar files to include in the classpath.
+-archives <comma separated list of archives>    specify comma separated archives to be unarchived on the compute machines.
+
+The general command line syntax is
+bin/hadoop command [genericOptions] [commandOptions]
+
+hdfs file size/units:
+hadoop fs -du -s -h /user/cloudera/demos
+
+find where file blocks are stored across cluster:
+hdfs fsck /user/cloudera/demos -files -blocks -locations
+
+===============================================================
+
+$$$ YARN $$$
+
+yarn
+
+resource manager ui:
+<hostname>:8088
+
+node manager ui:
+<hostname>:8042
+
+memory configuration:
+/etc/hadoop/conf/yarn-site.xml
+
+================================================================
+
+$$$ SPARK $$$
+
+spark
+
+/etc/spark/conf/spark-env.sh
+default settings:
+# - SPARK_EXECUTOR_INSTANCES, Number of executors aka workers to start (Default: 2)
+# - SPARK_EXECUTOR_CORES, Number of cores for the executors aka workers (Default: 1).
+# - SPARK_EXECUTOR_MEMORY, Memory per Executor aka worker (e.g. 1000M, 2G) (Default: 1G)
+
+if you have 30 yarn vcores then don't use more than half (15) spark executors for job execution
+***look at dataset size first*** -du -s -h before increasing capacity at runtime to optimize speed for data processing
+
+//////////////////////////////////////////////////////////////////////////////////
+
+$$$ SPARK EXERCISES $$$
+
+--use retail_db dataset
+
+problem statement
+- get daily revenue by product considering completed and closed orders
+- data need to be sorted by ascending order by date and then descending
+order by revenue computed for each product for each day
+
+data for orders and order_items is available in HDFS
+/public/retail_db/orders and /public/retail_db/order_items
+
+data for products is available locally under /data/retail_db/products
+
+final output:
+
+- HDFS location - avro format:
+/user/cloudera/daily_revenue_avro_python
+
+- HDFS location - text format:
+/user/cloudera/daily_revenue_text_python
+
+- HDFS location - parquet format:
+/user/cloudera/daily_revenue_parquet_python
+
+local linux location /home/cloudera/daily_revenue_python
+
+solution code need to be stored under
+/home/cloudera/daily_revenue_python.txt
+
+$ pyspark --master yarn --conf spark.ui.port=<#####>
+tracking url: <hostname>:4040
+
+//////////////////////////////////////////////////////////////////////////////////
+
+==========================================================
+
+# move retail_db data from local linux to hdfs linux
+
+$ hdfs dfs -put /home/cloudera/data-master/retail_db /user/cloudera/
+$ hadoop fs -ls /user/cloudera/retail_db/order_items
+$ pyspark
+
+==========================================================
+
+###create RDD from hdfs text file data###
+>>> help(sc.textFile)
+Help on method textFile in module pyspark.context:
+
+textFile(self, name, minPartitions=None, use_unicode=True) method of pyspark.context.SparkContext instance
+    Read a text file from HDFS, a local file system (available on all
+    nodes), or any Hadoop-supported file system URI, and return it as an
+    RDD of Strings.
+    
+    If use_unicode is False, the strings will be kept as `str` (encoding
+    as `utf-8`), which is faster and smaller than unicode. (Added in
+    Spark 1.2)
+    
+    >>> path = os.path.join(tempdir, "sample-text.txt")
+    >>> with open(path, "w") as testFile:
+    ...    _ = testFile.write("Hello world!")
+    >>> textFile = sc.textFile(path)
+    >>> textFile.collect()
+    [u'Hello world!']
+
+>>> orderItems = sc.textFile("/user/cloudera/retail_db/order_items")
+>>> type(orderItems)
+<class 'pyspark.rdd.RDD'>
+
+>>> orderItems.first()
+u'1,1,957,1,299.98,299.98'
+>>> for i in orderItems.take(10): print(i)
+... 
+1,1,957,1,299.98,299.98
+2,2,1073,1,199.99,199.99
+3,2,502,5,250.0,50.0
+4,2,403,1,129.99,129.99
+5,4,897,2,49.98,24.99
+6,4,365,5,299.95,59.99
+7,4,502,3,150.0,50.0
+8,4,1014,4,199.92,49.98
+9,5,957,1,299.98,299.98
+10,5,365,5,299.95,59.99
+
+# Lazy Evaluation
+- Directed Acyclic Graph (DAG) - store collected transformations until action is executed
+- Transformations - manipulates data
+- Actions - executes DAG 
+
+
+>>> orderItems = sc.textFile("/user/cloudera/retail_db/order_items")
+>>> orderItems.take(3)
+[u'1,1,957,1,299.98,299.98', u'2,2,1073,1,199.99,199.99', u'3,2,502,5,250.0,50.0']
+
+>>> orderItemsMap = orderItems.map(lambda oi: (int(oi.split(",")[1]), float(oi.split(",")[4])))
+>>> orderItemsMap.take(3)
+[(1, 299.98000000000002), (2, 199.99000000000001), (2, 250.0)]
+
+>>> revenuePerOrder = orderItemsMap.reduceByKey(lambda curr, next: curr + next)
+>>> revenuePerOrder.take(3)
+[(2, 579.98000000000002), (4, 699.85000000000002), (8, 729.83999999999992)]     
+
+#view DAG from shell or ui
+>>> orderItems.toDebugString()
+'(2) /user/cloudera/retail_db/order_items MapPartitionsRDD[1] at textFile at NativeMethodAccessorImpl.java:-2 []\n |  /user/cloudera/retail_db/order_items HadoopRDD[0] at textFile at NativeMethodAccessorImpl.java:-2 []'
+>>> orderItemsMap.toDebugString()
+'(2) PythonRDD[11] at RDD at PythonRDD.scala:43 []\n |  /user/cloudera/retail_db/order_items MapPartitionsRDD[1] at textFile at NativeMethodAccessorImpl.java:-2 []\n |  /user/cloudera/retail_db/order_items HadoopRDD[0] at textFile at NativeMethodAccessorImpl.java:-2 []'
+>>> revenuePerOrder.toDebugString()
+'(2) PythonRDD[12] at RDD at PythonRDD.scala:43 []\n |  MapPartitionsRDD[9] at mapPartitions at PythonRDD.scala:374 []\n |  ShuffledRDD[8] at partitionBy at NativeMethodAccessorImpl.java:-2 []\n +-(2) PairwiseRDD[7] at reduceByKey at <stdin>:1 []\n    |  PythonRDD[6] at reduceByKey at <stdin>:1 []\n    |  /user/cloudera/retail_db/order_items MapPartitionsRDD[1] at textFile at NativeMethodAccessorImpl.java:-2 []\n    |  /user/cloudera/retail_db/order_items HadoopRDD[0] at textFile at NativeMethodAccessorImpl.java:-2 []'
+
+
+****don't use collect() on exam***
+
+===================================================================================
+
+###create RDD using data from collection (list) - parallelize ###
+>>> l = range(1,10000)
+>>> type(l)
+<type 'list'>
+>>> lRDD = sc.parallelize(l)
+>>> type(lRDD)
+<class 'pyspark.rdd.RDD'>
+>>> productsRaw = open("/home/cloudera/data-master/retail_db/products/part-00000").read().splitlines()
+>>> productsRDD = sc.parallelize(productsRaw)
+>>> type(productsRDD)
+<class 'pyspark.rdd.RDD'>
+>>> productsRDD.take(3)
+['1,2,Quest Q64 10 FT. x 10 FT. Slant Leg Instant U,,59.98,http://images.acmesports.sports/Quest+Q64+10+FT.+x+10+FT.+Slant+Leg+Instant+Up+Canopy', "2,2,Under Armour Men's Highlight MC Football Clea,,129.99,http://images.acmesports.sports/Under+Armour+Men%27s+Highlight+MC+Football+Cleat", "3,2,Under Armour Men's Renegade D Mid Football Cl,,89.99,http://images.acmesports.sports/Under+Armour+Men%27s+Renegade+D+Mid+Football+Cleat"]
+
+======================================================================================
+
+###read data from different file formats###
+>>> help(sqlContext.read.json)
+>>> df1 = sqlContext.read.json('python/test_support/sql/people.json')
+    >>> df1.dtypes
+    [('age', 'bigint'), ('name', 'string')]
+    >>> rdd = sc.textFile('python/test_support/sql/people.json')
+    >>> df2 = sqlContext.read.json(rdd)
+    >>> df2.dtypes
+    [('age', 'bigint'), ('name', 'string')]
+
+ >>> help(sqlContext.read.orc)
+ >>> df = hiveContext.read.orc('python/test_support/sql/orc_partitioned')
+    >>> df.dtypes
+    [('a', 'bigint'), ('b', 'int'), ('c', 'int')]
+
+>>> help(sqlContext.read.parquet)
+>>> df = sqlContext.read.parquet('python/test_support/sql/parquet_partitioned')
+    >>> df.dtypes
+    [('name', 'string'), ('year', 'int'), ('month', 'int'), ('day', 'int')]
+
+>>> help(sqlContext.read.text)
+>>> df = sqlContext.read.text('python/test_support/sql/text-test.txt')
+    >>> df.collect()
+    [Row(value=u'hello'), Row(value=u'this')]
+
+load(self, path=None, source=None, schema=None, **options) method of pyspark.sql.context.HiveContext instance
+        Returns the dataset in a data source as a :class:`DataFrame`.
+
+>>> df1 = sqlContext.load("/user/cloudera/demos/data-master/retail_db_json/order_items", "json")
+>>> df1.show()                                                                  
+
+ >>> df2 = sqlContext.read.json("/user/cloudera/demos/data-master/retail_db_json/order_items")
+ >>> df2.show()                                                                  
+
+=================================================================================
+
+###row level transformations - strings###
+
+>>> orders = sc.textFile("/user/cloudera/demos/data-master/retail_db/orders")
+>>> record = orders.first()
+u'1,2013-07-25 00:00:00.0,11599,CLOSED'
+>>> type(record)
+<type 'unicode'>
+>>> record.split(",")
+[u'1', u'2013-07-25 00:00:00.0', u'11599', u'CLOSED']
+>>> type(record.split(","))
+<type 'list'>
+>>> int(record.split(",")[1].split(" ")[0].replace("-",""))
+20130725
+
+==================================================================================
+
+###row level transformations - map***
+
+>>> orders = sc.textFile("/user/cloudera/demos/data-master/retail_db/orders")
+>>> orders.first()
+u'1,2013-07-25 00:00:00.0,11599,CLOSED'
+>>> type(orders)
+<class 'pyspark.rdd.RDD'>
+>>> help(orders.map)
+
+map(self, f, preservesPartitioning=False) method of pyspark.rdd.RDD instance
+    Return a new RDD by applying a function to each element of this RDD.
+    
+    >>> rdd = sc.parallelize(["b", "a", "c"])
+    >>> sorted(rdd.map(lambda x: (x, 1)).collect())
+    [('a', 1), ('b', 1), ('c', 1)]
+
+>>> orders.map(lambda o: o.split(",")[3]).first()
+u'CLOSED'
+>>> orders.map(lambda o: int(o.split(",")[1].split(" ")[0].replace("-",""))).take(5)
+[20130725, 20130725, 20130725, 20130725, 20130725]
+
+--tuple
+>>> orders.map(lambda o: (o.split(",")[3], 1)).first()
+(u'CLOSED', 1)
+>>> orderItemsMap = orderItems.map(lambda oi: (int(oi.split(",")[1]), float(oi.split(",")[4])))
+>>> orderItemsMap.first()
+(1, 299.98000000000002)
+
+>>> for i in orderItemsMap.take(5): print(i)
+... 
+(1, 299.98000000000002)
+(2, 199.99000000000001)
+(2, 250.0)
+(2, 129.99000000000001)
+(4, 49.979999999999997)
+
+=================================================================================
+
+###row level transformations - flatmap###
+>>> linesList = ['How are you', 'let us perform', 'word count using flatMap', 'to understand flatMap in detail']
+>>> lines = sc.parallelize(linesList)
+--convert text list to individual token list
+>>> words = lines.flatMap(lambda l: l.split(" "))
+>>> for i in words.collect(): print(i)
+... 
+How
+are
+you
+let
+us
+perform
+word
+count
+using
+flatMap
+to
+understand
+flatMap
+in
+detail
+
+====================================================================================
+
+### row level transformations - filter / OR / AND statements###
+---filter orders with COMPLETE tag
+>>> for i in ordersComplete.take(5): print(i)
+...
+3,2013-07-25 00:00:00.0,12111,COMPLETE
+5,2013-07-25 00:00:00.0,11318,COMPLETE
+6,2013-07-25 00:00:00.0,7130,COMPLETE
+7,2013-07-25 00:00:00.0,4530,COMPLETE
+15,2013-07-25 00:00:00.0,2568,COMPLETE
+>>> ordersComplete = orders.filter(lambda o: o.split(",")[3] == 'COMPLETE' or o.split(",")[3] == 'CLOSED')
+>>> for i in ordersComplete.take(5): print(i)
+... 
+1,2013-07-25 00:00:00.0,11599,CLOSED
+3,2013-07-25 00:00:00.0,12111,COMPLETE
+4,2013-07-25 00:00:00.0,8827,CLOSED
+5,2013-07-25 00:00:00.0,11318,COMPLETE
+6,2013-07-25 00:00:00.0,7130,COMPLETE
+7,2013-07-25 00:00:00.0,4530,COMPLETE
+
+--and statement
+>>> ordersComplete = orders.filter(lambda o: (o.split(",")[3] == 'COMPLETE' or o.split(",")[3] == 'CLOSED') and o.split(",")[1][:7] == "2014-01")
+>>> ordersComplete.take(5)
+[u'25882,2014-01-01 00:00:00.0,4598,COMPLETE', u'25888,2014-01-01 00:00:00.0,6735,COMPLETE', u'25889,2014-01-01 00:00:00.0,10045,COMPLETE', u'25891,2014-01-01 00:00:00.0,3037,CLOSED', u'25895,2014-01-01 00:00:00.0,1044,COMPLETE']
+
+--alternate method 2 filters transformations
+>>> ordersComplete = orders.filter(lambda o: o.split(",")[3] == 'COMPLETE' or o.split(",")[3] == 'CLOSED').filter(lambda o: o.split(",")[1][:7] == "2014-01")
+>>> for i in ordersComplete.take(5): print(i)
+... 
+25882,2014-01-01 00:00:00.0,4598,COMPLETE
+25888,2014-01-01 00:00:00.0,6735,COMPLETE
+25889,2014-01-01 00:00:00.0,10045,COMPLETE
+25891,2014-01-01 00:00:00.0,3037,CLOSED
+25895,2014-01-01 00:00:00.0,1044,COMPLETE
+
+--alternate method IN statement
+>>> ordersComplete = orders.filter(lambda o: o.split(",")[3] in ['COMPLETE','CLOSED'] and o.split(",")[1][:7] == "2014-01")
+
+==================================================================================
+
+###joining data sets - inner join###
+>>> orderItems = sc.textFile("/user/cloudera/demos/data-master/retail_db/order_items")
+>>> orderItems.first()
+u'1,1,957,1,299.98,299.98'
+>>> ordersMap = orders.map(lambda o: (int(o.split(",")[0]), o.split(",")[1]))
+>>> ordersMap.take(5)
+[(1, u'2013-07-25 00:00:00.0'), (2, u'2013-07-25 00:00:00.0'), (3, u'2013-07-25 00:00:00.0'), (4, u'2013-07-25 00:00:00.0'), (5, u'2013-07-25 00:00:00.0')]
+>>> orderItemsMap = orderItems. \
+... map(lambda oi: (int(oi.split(",")[1]),float(oi.split(",")[4])))
+>>> orderItemsMap.take(5)
+[(1, 299.98000000000002), (2, 199.99000000000001), (2, 250.0), (2, 129.99000000000001), (4, 49.979999999999997)]
+>>> ordersJoin = ordersMap.join(orderItemsMap)
+>>> for i in ordersJoin.take(5): print(i)
+... 
+(32768, (u'2014-02-12 00:00:00.0', 199.99000000000001))                         
+(32768, (u'2014-02-12 00:00:00.0', 129.99000000000001))
+(32768, (u'2014-02-12 00:00:00.0', 299.98000000000002))
+(32768, (u'2014-02-12 00:00:00.0', 399.98000000000002))
+(49152, (u'2014-05-27 00:00:00.0', 299.98000000000002))
+
+--left join (parent ---> child) + filter on tuple output ex: (1, (2,3))
+
+>>> ordersLeftOuterJoin = ordersMap.leftOuterJoin(orderItemsMap)
+>>> ordersLeftOuterJoinFilter = ordersLeftOuterJoin. \
+... filter(lambda o: o[1][1] == None)
+>>> for i in ordersLeftOuterJoinFilter.take(10): print(i)
+... 
+(43692, (u'PENDING_PAYMENT', None))
+(32, (u'COMPLETE', None))
+(40, (u'PENDING_PAYMENT', None))
+(32776, (u'CLOSED', None))
+(65904, (u'PENDING_PAYMENT', None))
+(60, (u'PENDING_PAYMENT', None))
+(38240, (u'COMPLETE', None))
+(57440, (u'COMPLETE', None))
+(76, (u'COMPLETE', None))
+(80, (u'COMPLETE', None))
+
+=======================================================================
+
+###aggregation - count and reduce###
+
+#aggreate - total - get revenue for give order_id
+
+reduce(self, f) method of pyspark.rdd.PipelinedRDD instance
+    Reduces the elements of this RDD using the specified commutative and
+    associative binary operator. Currently reduces partitions locally.
+    
+    >>> from operator import add
+    >>> sc.parallelize([1, 2, 3, 4, 5]).reduce(add)
+    15
+    >>> sc.parallelize((2 for _ in range(10))).map(lambda x: 1).cache().reduce(add)
+    10
+    >>> sc.parallelize([]).reduce(add)
+    Traceback (most recent call last):
+        ...
+    ValueError: Can not reduce() empty RDD
+
+>>> orderItems = sc.textFile("/user/cloudera/demos/data-master/retail_db/order_items")
+>>> orderItems.count()
+172198                                                                          
+>>> for i in orderItems.take(5): print(i)
+... 
+1,1,957,1,299.98,299.98
+2,2,1073,1,199.99,199.99
+3,2,502,5,250.0,50.0
+4,2,403,1,129.99,129.99
+5,4,897,2,49.98,24.99
+
+>>> orderItemsFilter = orderItems.filter(lambda oi: int(oi.split(",")[1]) == 2)
+>>> for i in orderItemsFilter.take(5): print(i)
+... 
+2,2,1073,1,199.99,199.99
+3,2,502,5,250.0,50.0
+4,2,403,1,129.99,129.99
+>>> orderItemsSubTotal = orderItemsFilter.map(lambda oi: float(oi.split(",")[4]))
+
+>>> for i in orderItemsSubTotal.take(5): print(i)
+... 
+199.99
+250.0
+129.99
+>>> help(orderItemsSubTotal.reduce)
+
+>>> from operator import add
+>>> orderItemsSubTotal.reduce(add)
+579.98000000000002                                                              
+
+>>> orderItemsSubTotal.reduce(lambda x, y: x+y)
+579.98000000000002                                                              
+
+---------------------------------------
+
+# get order item details which have minimum order_item_subtotal for given order_id
+
+>>> orderItems = sc.textFile("/user/cloudera/demos/data-master/retail_db/order_items")
+>>> for i in orderItemsFilter.take(5): print(i)
+... 
+2,2,1073,1,199.99,199.99
+3,2,502,5,250.0,50.0
+4,2,403,1,129.99,129.99
+>>> orderItemsFilter = orderItems.filter(lambda oi: int(oi.split(",")[1]) == 2)
+>>> for i in orderItemsFilter.take(5): print(i)
+... 
+2,2,1073,1,199.99,199.99
+3,2,502,5,250.0,50.0
+4,2,403,1,129.99,129.99
+>>> orderItemsFilter.reduce(lambda x, y: x if(float(x.split(",")[4]) < float(y.split(",")[4])) else y)
+u'4,2,403,1,129.99,129.99'    
+
+=====================================================================                                                  
+
+###aggregation - countByKey - count by variable###
+
+#get count by status
+>>> orders = sc.textFile("/user/cloudera/demos/data-master/retail_db/orders")
+>>> for i in orders.take(5): print(i)
+... 
+1,2013-07-25 00:00:00.0,11599,CLOSED
+2,2013-07-25 00:00:00.0,256,PENDING_PAYMENT
+3,2013-07-25 00:00:00.0,12111,COMPLETE
+4,2013-07-25 00:00:00.0,8827,CLOSED
+5,2013-07-25 00:00:00.0,11318,COMPLETE
+>>> ordersStatus = orders.map(lambda o: (o.split(",")[3], 1))
+>>> for i in ordersStatus.take(5): print(i)
+... 
+(u'CLOSED', 1)
+(u'PENDING_PAYMENT', 1)
+(u'COMPLETE', 1)
+(u'CLOSED', 1)
+(u'COMPLETE', 1)
+>>> orderStatusCountByKey = ordersStatus.countByKey()
+>>> type(orderStatusCountByKey)
+<type 'collections.defaultdict'>
+>>> orderStatusCountByKey
+defaultdict(<type 'int'>, {u'COMPLETE': 22899, u'PAYMENT_REVIEW': 729, u'PROCESSING': 8275, u'CANCELED': 1428, u'PENDING': 7610, u'CLOSED': 7556, u'PENDING_PAYMENT': 15030, u'SUSPECTED_FRAUD': 1558, u'ON_HOLD': 3798})
+
+==========================================================================
+
+###aggregation - groupByKey### --> (id, [element1, element2, element3, etc])
+
+#get revenue for each order id
+>>> orderItems = sc.textFile("/user/cloudera/demos/data-master/retail_db/order_items")
+>>> for i in orderItems.take(5): print(i)
+... 
+1,1,957,1,299.98,299.98
+2,2,1073,1,199.99,199.99
+3,2,502,5,250.0,50.0
+4,2,403,1,129.99,129.99
+5,4,897,2,49.98,24.99
+>>> orderItemsMap = orderItems.map(lambda oi: (int(oi.split(",")[1]), float(oi.split(",")[4])))
+>>> for i in orderItemsMap.take(5): print(i)
+... 
+(1, 299.98000000000002)
+(2, 199.99000000000001)
+(2, 250.0)
+(2, 129.99000000000001)
+(4, 49.979999999999997)
+>>> orderItemsGroupByOrderId = orderItemsMap.groupByKey()
+>>> for i in orderItemsGroupByOrderId.take(5): print(i)
+... 
+(2, <pyspark.resultiterable.ResultIterable object at 0xb4d810>)
+(4, <pyspark.resultiterable.ResultIterable object at 0xb4d9d0>)
+(8, <pyspark.resultiterable.ResultIterable object at 0xb4da10>)
+(10, <pyspark.resultiterable.ResultIterable object at 0xb4da50>)
+(12, <pyspark.resultiterable.ResultIterable object at 0xb4da90>)
+>>> l = orderItemsGroupByOrderId.first()
+>>> type(l)
+<type 'tuple'>
+>>> l
+>>> l[0]
+2
+>>> l[1]
+<pyspark.resultiterable.ResultIterable object at 0xb4de90>
+>>> list(l[1])
+[199.99000000000001, 250.0, 129.99000000000001]
+>>> sum(l[1])
+579.98000000000002
+>>> revenuePerOrderId = orderItemsGroupByOrderId.map(lambda oi: (oi[0], sum(oi[1])))
+>>> for i in revenuePerOrderId.take(5): print(i)
+... 
+(2, 579.98000000000002)
+(4, 699.85000000000002)
+(8, 729.83999999999992)
+(10, 651.92000000000007)
+(12, 1299.8700000000001)
+
+=========================================================================
+
+### sorting data using groupByKey ###
+help(sorted)
+sorted(...)
+    sorted(iterable, cmp=None, key=None, reverse=False) --> new sorted list
+    key=key field to sort by
+    reverse=False --> asc order
+    reverse=True --> desc order
+
+>>> orderItems = sc.textFile("/user/cloudera/demos/data-master/retail_db/order_items")
+>>> for i in orderItems.take(5): print(i)
+... 
+1,1,957,1,299.98,299.98
+2,2,1073,1,199.99,199.99
+3,2,502,5,250.0,50.0
+4,2,403,1,129.99,129.99
+5,4,897,2,49.98,24.99
+>>> orderItemsMap = orderItems.map(lambda oi: (int(oi.split(",")[1]), oi))
+>>> for i in orderItemsMap.take(5): print(i)
+... 
+(1, u'1,1,957,1,299.98,299.98')
+(2, u'2,2,1073,1,199.99,199.99')
+(2, u'3,2,502,5,250.0,50.0')
+(2, u'4,2,403,1,129.99,129.99')
+(4, u'5,4,897,2,49.98,24.99')
+>>> orderItemsGroupByOrderId = orderItemsMap.groupByKey()
+>>> for i in orderItemsGroupByOrderId.take(5): print(i)
+... 
+(2, <pyspark.resultiterable.ResultIterable object at 0xb5a090>)                 
+(4, <pyspark.resultiterable.ResultIterable object at 0xb5a250>)
+(8, <pyspark.resultiterable.ResultIterable object at 0xb5a290>)
+(10, <pyspark.resultiterable.ResultIterable object at 0xb5a2d0>)
+(12, <pyspark.resultiterable.ResultIterable object at 0xb5a310>)
+>>> l = orderItemsGroupByOrderId.first()
+>>> l[1]
+<pyspark.resultiterable.ResultIterable object at 0xb5a750>
+>>> list(l[1])
+[u'2,2,1073,1,199.99,199.99', u'3,2,502,5,250.0,50.0', u'4,2,403,1,129.99,129.99']
+
+>>> sorted(l[1], key=lambda k: float(k.split(",")[4]), reverse=True)
+[u'3,2,502,5,250.0,50.0', u'2,2,1073,1,199.99,199.99', u'4,2,403,1,129.99,129.99']
+>>> orderItemsSortedBySubTotalPerOrder = orderItemsGroupByOrderId. \
+... map(lambda oi: sorted(oi[1], key=lambda k: float(k.split(",")[4]), reverse=True))
+
+#print collection per order item
+>>> for i in orderItemsSortedBySubTotalPerOrder.take(5): print(i)
+... 
+[u'3,2,502,5,250.0,50.0', u'2,2,1073,1,199.99,199.99', u'4,2,403,1,129.99,129.99']
+[u'6,4,365,5,299.95,59.99', u'8,4,1014,4,199.92,49.98', u'7,4,502,3,150.0,50.0', u'5,4,897,2,49.98,24.99']
+[u'18,8,365,5,299.95,59.99', u'19,8,1014,4,199.92,49.98', u'17,8,365,3,179.97,59.99', u'20,8,502,1,50.0,50.0']
+[u'24,10,1073,1,199.99,199.99', u'28,10,1073,1,199.99,199.99', u'26,10,403,1,129.99,129.99', u'25,10,1014,2,99.96,49.98', u'27,10,917,1,21.99,21.99']
+[u'37,12,191,5,499.95,99.99', u'34,12,957,1,299.98,299.98', u'38,12,502,5,250.0,50.0', u'36,12,1014,3,149.94,49.98', u'35,12,134,4,100.0,25.0']
+
+--flat map sorting
+>>> orderItemsSortedBySubTotalPerOrder = orderItemsGroupByOrderId. \
+... flatMap(lambda oi: sorted(oi[1], key=lambda k: float(k.split(",")[4]), reverse=True))
+>>> for i in orderItemsSortedBySubTotalPerOrder.take(5): print(i)
+... 
+3,2,502,5,250.0,50.0
+2,2,1073,1,199.99,199.99
+4,2,403,1,129.99,129.99
+6,4,365,5,299.95,59.99
+8,4,1014,4,199.92,49.98
+
+=======================================================================
+
+###aggregation - reduceByKey###
+
+#get revenue per order id
+
+help(orderItemsMap.reduceByKey)
+reduceByKey(self, func, numPartitions=None, partitionFunc=<function portable_hash>) method of pyspark.rdd.PipelinedRDD instance
+    Merge the values for each key using an associative reduce function.
+    
+    This will also perform the merging locally on each mapper before
+    sending results to a reducer, similarly to a "combiner" in MapReduce.
+    
+    Output will be partitioned with C{numPartitions} partitions, or
+    the default parallelism level if C{numPartitions} is not specified.
+    Default partitioner is hash-partition.
+    
+    >>> from operator import add
+    >>> rdd = sc.parallelize([("a", 1), ("b", 1), ("a", 1)])
+    >>> sorted(rdd.reduceByKey(add).collect())
+    [('a', 2), ('b', 1)]
+
+ >>> orderItems = sc.textFile("/user/cloudera/demos/data-master/retail_db/order_items")
+>>> orderItemsMap = orderItems.map(lambda oi: (int(oi.split(",")[1]), float(oi.split(",")[4])))
+>>> for i in orderItemsMap.take(5): print(i)
+... 
+(1, 299.98000000000002)
+(2, 199.99000000000001)
+(2, 250.0)
+(2, 129.99000000000001)
+(4, 49.979999999999997)
+>>> help(orderItemsMap.reduceByKey)
+
+>>> from operator import add
+>>> revenuePerOrderId = orderItemsMap.reduceByKey(lambda x, y: x+y)
+>>> for i in revenuePerOrderId.take(5): print(i)
+... 
+(2, 579.98000000000002)                                                         
+(4, 699.85000000000002)
+(8, 729.83999999999992)
+(10, 651.92000000000007)
+(12, 1299.8700000000001)
+>>> revenuePerOrderIdOpp = orderItemsMap.reduceByKey(add)
+>>> for i in revenuePerOrderId.take(5): print(i)
+... 
+(2, 579.98000000000002)
+(4, 699.85000000000002)
+(8, 729.83999999999992)
+(10, 651.92000000000007)
+(12, 1299.8700000000001)
+
+#get min revenue for each order item subtotal
+>>> minSubTotalPerOrderId = orderItemsMap.reduceByKey(lambda x, y: x if (x<y) else y)
+>>> for i in minSubTotalPerOrderId.take(5): print(i)
+... 
+(2, 129.99000000000001)                                                         
+(4, 49.979999999999997)
+(8, 50.0)
+(10, 21.989999999999998)
+(12, 100.0)
+
+#get order item details with min subtotal for each order id
+>>> orderItems = sc.textFile("/user/cloudera/demos/data-master/retail_db/order_items")
+>>> orderItemsMap = orderItems.map(lambda oi: (int(oi.split(",")[1]), oi))
+>>> for i in orderItemsMap.take(5): print(i)
+(1, u'1,1,957,1,299.98,299.98')
+(2, u'2,2,1073,1,199.99,199.99')
+(2, u'3,2,502,5,250.0,50.0')
+(2, u'4,2,403,1,129.99,129.99')
+(4, u'5,4,897,2,49.98,24.99')
+
+>>> minSubTotalPerOrderId = orderItemsMap. \
+reduceByKey(lambda x, y:
+    x if (float(x.split(",")[4]) < float(y.split(",")[4])) else y)
+
+================================================================================
+
+### aggregation - aggregateBykey + count ###
+aggregateByKey(self, zeroValue, seqFunc, combFunc, numPartitions=None, partitionFunc=<function portable_hash>) method of pyspark.rdd.RDD instance
+    Aggregate the values of each key, using given combine functions and a neutral
+    "zero value". This function can return a different result type, U, than the type
+    of the values in this RDD, V. Thus, we need one operation for merging a V into
+    a U and one operation for merging two U's, The former operation is used for merging
+    values within a partition, and the latter is used for merging values between
+    partitions. To avoid memory allocation, both of these functions are
+    allowed to modify and return their first argument instead of creating a new U.
+
+#get revenue and count per order
+desired output --> (order id, (subtotal, order item count per order id))
+
+>>> orderItems = sc.textFile("/user/cloudera/demos/data-master/retail_db/order_items")
+>>> orderItemsMap = orderItems.map(lambda oi: (int(oi.split(",")[1]), float(oi.split(",")[4])))
+>>> for i in orderItemsMap.take(5): print(i)
+(1, 299.98000000000002)
+(2, 199.99000000000001)
+(2, 250.0)
+(2, 129.99000000000001)
+(4, 49.979999999999997)
+
+>>> revenuePerOrder = orderItemsMap. \
+aggregateByKey((0.0, 0), \
+lambda x, y: (x[0] + y, x[1] + 1), \
+lambda x, y: (x[0] + y[0], x[1] + y[1]))
+
+>>> for i in revenuePerOrder.take(5): print(i)
+... 
+(2, (579.98000000000002, 3))                                                    
+(4, (699.85000000000002, 4))
+(8, (729.83999999999992, 4))
+(10, (651.92000000000007, 5))
+(12, (1299.8700000000001, 5))
+
+===============================================================================
+
+### sorting - sortByKey ###
+
+# sort by produce price (key)
+>>> products = sc.textFile("/user/cloudera/demos/data-master/retail_db/products")
+>>> for i in products.take(5): print(i)
+... 
+1,2,Quest Q64 10 FT. x 10 FT. Slant Leg Instant U,,59.98,http://images.acmesports.sports/Quest+Q64+10+FT.+x+10+FT.+Slant+Leg+Instant+Up+Canopy
+2,2,Under Armour Men's Highlight MC Football Clea,,129.99,http://images.acmesports.sports/Under+Armour+Men%27s+Highlight+MC+Football+Cleat
+3,2,Under Armour Men's Renegade D Mid Football Cl,,89.99,http://images.acmesports.sports/Under+Armour+Men%27s+Renegade+D+Mid+Football+Cleat
+4,2,Under Armour Men's Renegade D Mid Football Cl,,89.99,http://images.acmesports.sports/Under+Armour+Men%27s+Renegade+D+Mid+Football+Cleat
+5,2,Riddell Youth Revolution Speed Custom Footbal,,199.99,http://images.acmesports.sports/Riddell+Youth+Revolution+Speed+Custom+Football+Helmet
+
+>>> productsMap = products.map(lambda p: (float(p.split(",")[4]), p))
+
+>>> for i in productsMap.take(5): print(i)
+(59.979999999999997, u'1,2,Quest Q64 10 FT. x 10 FT. Slant Leg Instant U,,59.98,http://images.acmesports.sports/Quest+Q64+10+FT.+x+10+FT.+Slant+Leg+Instant+Up+Canopy')
+(129.99000000000001, u"2,2,Under Armour Men's Highlight MC Football Clea,,129.99,http://images.acmesports.sports/Under+Armour+Men%27s+Highlight+MC+Football+Cleat")
+(89.989999999999995, u"3,2,Under Armour Men's Renegade D Mid Football Cl,,89.99,http://images.acmesports.sports/Under+Armour+Men%27s+Renegade+D+Mid+Football+Cleat")
+(89.989999999999995, u"4,2,Under Armour Men's Renegade D Mid Football Cl,,89.99,http://images.acmesports.sports/Under+Armour+Men%27s+Renegade+D+Mid+Football+Cleat")
+(199.99000000000001, u'5,2,Riddell Youth Revolution Speed Custom Footbal,,199.99,http://images.acmesports.sports/Riddell+Youth+Revolution+Speed+Custom+Football+Helmet')
+
+>>> productsSortedByPrice = productsMap.sortByKey()
+
+#error because , delimiter exists in record field hence filter out
+ValueError: empty string for float()
+
+#finding data quality issue
+>>> products.filter(lambda p: p.split(",")[4] == "")
+PythonRDD[86] at RDD at PythonRDD.scala:43
+
+>>> for i in products.filter(lambda p: p.split(",")[4] == "").take(10): print(i)
+... 
+685,31,"TaylorMade SLDR Irons - (Steel) 4-PW, AW",,899.99,http://images.acmesports.sports/TaylorMade+SLDR+Irons+-+%28Steel%29+4-PW%2C+AW
+
+>>> productsMap = products. \
+filter(lambda p: p.split(",")[4] != ""). \
+map(lambda p: (float(p.split(",")[4]), p))
+
+>>> productsSortedByPrice = productsMap.sortByKey()
+>>> for i in productsSortedByPrice.take(5): print(i) 
+... 
+(0.0, u"38,3,Nike Men's Hypervenom Phantom Premium FG Socc,,0.0,http://images.acmesports.sports/Nike+Men%27s+Hypervenom+Phantom+Premium+FG+Soccer+Cleat")
+(0.0, u"388,18,Nike Men's Hypervenom Phantom Premium FG Socc,,0.0,http://images.acmesports.sports/Nike+Men%27s+Hypervenom+Phantom+Premium+FG+Soccer+Cleat")
+(0.0, u"414,19,Nike Men's Hypervenom Phantom Premium FG Socc,,0.0,http://images.acmesports.sports/Nike+Men%27s+Hypervenom+Phantom+Premium+FG+Soccer+Cleat")
+(0.0, u"517,24,Nike Men's Hypervenom Phantom Premium FG Socc,,0.0,http://images.acmesports.sports/Nike+Men%27s+Hypervenom+Phantom+Premium+FG+Soccer+Cleat")
+(0.0, u"547,25,Nike Men's Hypervenom Phantom Premium FG Socc,,0.0,http://images.acmesports.sports/Nike+Men%27s+Hypervenom+Phantom+Premium+FG+Soccer+Cleat")
+
+#map phase to extract data record and not key within tuple
+>>> productsSortedMap = productsSortedByPrice.map(lambda p: p[1])
+>>> for i in productsSortedMap.take(5): print(i)
+... 
+38,3,Nike Men's Hypervenom Phantom Premium FG Socc,,0.0,http://images.acmesports.sports/Nike+Men%27s+Hypervenom+Phantom+Premium+FG+Soccer+Cleat
+388,18,Nike Men's Hypervenom Phantom Premium FG Socc,,0.0,http://images.acmesports.sports/Nike+Men%27s+Hypervenom+Phantom+Premium+FG+Soccer+Cleat
+414,19,Nike Men's Hypervenom Phantom Premium FG Socc,,0.0,http://images.acmesports.sports/Nike+Men%27s+Hypervenom+Phantom+Premium+FG+Soccer+Cleat
+517,24,Nike Men's Hypervenom Phantom Premium FG Socc,,0.0,http://images.acmesports.sports/Nike+Men%27s+Hypervenom+Phantom+Premium+FG+Soccer+Cleat
+547,25,Nike Men's Hypervenom Phantom Premium FG Socc,,0.0,http://images.acmesports.sports/Nike+Men%27s+Hypervenom+Phantom+Premium+FG+Soccer+Cleat
+
+# sort data by product category asc (default) and then product price descending
+
+>>> products = sc.textFile("/user/cloudera/demos/data-master/retail_db/products")
+>>> for i in products.take(5): print(i)
+1,2,Quest Q64 10 FT. x 10 FT. Slant Leg Instant U,,59.98,http://images.acmesports.sports/Quest+Q64+10+FT.+x+10+FT.+Slant+Leg+Instant+Up+Canopy
+2,2,Under Armour Men's Highlight MC Football Clea,,129.99,http://images.acmesports.sports/Under+Armour+Men%27s+Highlight+MC+Football+Cleat
+3,2,Under Armour Men's Renegade D Mid Football Cl,,89.99,http://images.acmesports.sports/Under+Armour+Men%27s+Renegade+D+Mid+Football+Cleat
+4,2,Under Armour Men's Renegade D Mid Football Cl,,89.99,http://images.acmesports.sports/Under+Armour+Men%27s+Renegade+D+Mid+Football+Cleat
+5,2,Riddell Youth Revolution Speed Custom Footbal,,199.99,http://images.acmesports.sports/Riddell+Youth+Revolution+Speed+Custom+Football+Helmet
+
+--remove bad data and get desired output: ((product cat, product price), record)
+>>> productsMap = products. \
+filter(lambda p: p.split(",")[4] != ""). \
+map(lambda p: ((int(p.split(",")[1]), -float(p.split(",")[4])), p))
+
+--sortByKey(False) = desc order; - = negate and sort ascending order if key int
+
+>>> for i in productsMap.sortByKey().map(lambda p: p[1]).take(10): print(i)
+... 
+16,2,Riddell Youth 360 Custom Football Helmet,,299.99,http://images.acmesports.sports/Riddell+Youth+360+Custom+Football+Helmet
+11,2,Fitness Gear 300 lb Olympic Weight Set,,209.99,http://images.acmesports.sports/Fitness+Gear+300+lb+Olympic+Weight+Set
+5,2,Riddell Youth Revolution Speed Custom Footbal,,199.99,http://images.acmesports.sports/Riddell+Youth+Revolution+Speed+Custom+Football+Helmet
+14,2,Quik Shade Summit SX170 10 FT. x 10 FT. Canop,,199.99,http://images.acmesports.sports/Quik+Shade+Summit+SX170+10+FT.+x+10+FT.+Canopy
+12,2,Under Armour Men's Highlight MC Alter Ego Fla,,139.99,http://images.acmesports.sports/Under+Armour+Men%27s+Highlight+MC+Alter+Ego+Flash+Football...
+23,2,Under Armour Men's Highlight MC Alter Ego Hul,,139.99,http://images.acmesports.sports/Under+Armour+Men%27s+Highlight+MC+Alter+Ego+Hulk+Football...
+6,2,Jordan Men's VI Retro TD Football Cleat,,134.99,http://images.acmesports.sports/Jordan+Men%27s+VI+Retro+TD+Football+Cleat
+2,2,Under Armour Men's Highlight MC Football Clea,,129.99,http://images.acmesports.sports/Under+Armour+Men%27s+Highlight+MC+Football+Cleat
+8,2,Nike Men's Vapor Carbon Elite TD Football Cle,,129.99,http://images.acmesports.sports/Nike+Men%27s+Vapor+Carbon+Elite+TD+Football+Cleat
+10,2,Under Armour Men's Highlight MC Football Clea,,129.99,http://images.acmesports.sports/Under+Armour+Men%27s+Highlight+MC+Football+Cleat
+980,44,Quest Oversized Arm Chair,,21.99,http://images.acmesports.sports/Quest+Oversized+Arm+Chair
+1009,45,Diamond Fear No Evil Compound Bow Package,,599.99,http://images.acmesports.sports/Diamond+Fear+No+Evil+Compound+Bow+Package
+
+--prod cat asc ex: 44 --> 45 ; prod price desc ex: 299 --> 199
+
+==============================================================================
+
+### global ranking - sortByKey() and take() ###
+
+#get top N products (desc) by price
+
+>>> products = sc.textFile("/user/cloudera/demos/data-master/retail_db/products")
+>>> productsMap = products. \
+filter(lambda p: p.split(",")[4] != ""). \
+map(lambda p: (float(p.split(",")[4]), p))
+>>> productsSortedByPrice = productsMap.sortByKey(False)
+>>> for i in productsSortedByPrice.map(lambda p: p[1]).take(5): print(i)
+... 
+208,10,SOLE E35 Elliptical,,1999.99,http://images.acmesports.sports/SOLE+E35+Elliptical
+66,4,SOLE F85 Treadmill,,1799.99,http://images.acmesports.sports/SOLE+F85+Treadmill
+199,10,SOLE F85 Treadmill,,1799.99,http://images.acmesports.sports/SOLE+F85+Treadmill
+496,22,SOLE F85 Treadmill,,1799.99,http://images.acmesports.sports/SOLE+F85+Treadmill
+1048,47,"Spalding Beast 60"" Glass Portable Basketball ",,1099.99,http://images.acmesports.sports/Spalding+Beast+60%22+Glass+Portable+Basketball+Hoop
+
+=================================================================================
+
+### global ranking - takeOrdered() and top() ###
+#process = map --> sortByKey --> map --> take
+>>> products = sc.textFile("/user/cloudera/demos/data-master/retail_db/products")
+>>> productsFilter = products.filter(lambda p: p.split(",")[4] != "")
+
+>>> help(productsFilter.top)
+top(self, num, key=None) method of pyspark.rdd.PipelinedRDD instance
+    Get the top N elements from a RDD.
+    
+    Note: It returns the list sorted in descending order.
+    
+    >>> sc.parallelize([10, 4, 2, 12, 3]).top(1)
+    [12]
+    >>> sc.parallelize([2, 3, 4, 5, 6], 2).top(2)
+    [6, 5]
+    >>> sc.parallelize([10, 4, 2, 12, 3]).top(3, key=str)
+    [4, 3, 2]
+
+>>> help(productsFilter.takeOrdered)
+takeOrdered(self, num, key=None) method of pyspark.rdd.PipelinedRDD instance
+    Get the N elements from a RDD ordered in ascending order or as
+    specified by the optional key function.
+    
+    >>> sc.parallelize([10, 1, 2, 9, 3, 4, 5, 6, 7]).takeOrdered(6)
+    [1, 2, 3, 4, 5, 6]
+    >>> sc.parallelize([10, 1, 2, 9, 3, 4, 5, 6, 7], 2).takeOrdered(6, key=lambda x: -x)
+    [10, 9, 7, 6, 5, 4]
+
+>>> topNProducts = productsFilter.top(5, key=lambda k: float(k.split(",")[4]))
+>>> for i in topNProducts: print(i)
+... 
+208,10,SOLE E35 Elliptical,,1999.99,http://images.acmesports.sports/SOLE+E35+Elliptical
+66,4,SOLE F85 Treadmill,,1799.99,http://images.acmesports.sports/SOLE+F85+Treadmill
+199,10,SOLE F85 Treadmill,,1799.99,http://images.acmesports.sports/SOLE+F85+Treadmill
+496,22,SOLE F85 Treadmill,,1799.99,http://images.acmesports.sports/SOLE+F85+Treadmill
+1048,47,"Spalding Beast 60"" Glass Portable Basketball ",,1099.99,http://images.acmesports.sports/Spalding+Beast+60%22+Glass+Portable+Basketball+Hoop
+
+# use - to negate default asc order in front of key to sort in desc order
+>>> topNProducts = productsFilter.takeOrdered(5, key=lambda k: -float(k.split(",")[4]))
+>>> for i in topNProducts: print(i)
+... 
+208,10,SOLE E35 Elliptical,,1999.99,http://images.acmesports.sports/SOLE+E35+Elliptical
+66,4,SOLE F85 Treadmill,,1799.99,http://images.acmesports.sports/SOLE+F85+Treadmill
+199,10,SOLE F85 Treadmill,,1799.99,http://images.acmesports.sports/SOLE+F85+Treadmill
+496,22,SOLE F85 Treadmill,,1799.99,http://images.acmesports.sports/SOLE+F85+Treadmill
+1048,47,"Spalding Beast 60"" Glass Portable Basketball ",,1099.99,http://images.acmesports.sports/Spalding+Beast+60%22+Glass+Portable+Basketball+Hoop
+
+==========================================================================
+
+### by key ranking - groupByKey and flatMap ###
+
+# get top N products by price with each category
+>>> products = sc.textFile("/user/cloudera/demos/data-master/retail_db/products")
+>>> productsFilter = products.filter(lambda p: p.split(",")[4] != "")
+>>> productsMap = productsFilter.map(lambda p: (int(p.split(",")[1]), p))
+>>> for i in productsMap.take(5): print(i)
+(2, u'1,2,Quest Q64 10 FT. x 10 FT. Slant Leg Instant U,,59.98,http://images.acmesports.sports/Quest+Q64+10+FT.+x+10+FT.+Slant+Leg+Instant+Up+Canopy')
+(2, u"2,2,Under Armour Men's Highlight MC Football Clea,,129.99,http://images.acmesports.sports/Under+Armour+Men%27s+Highlight+MC+Football+Cleat")
+(2, u"3,2,Under Armour Men's Renegade D Mid Football Cl,,89.99,http://images.acmesports.sports/Under+Armour+Men%27s+Renegade+D+Mid+Football+Cleat")
+(2, u"4,2,Under Armour Men's Renegade D Mid Football Cl,,89.99,http://images.acmesports.sports/Under+Armour+Men%27s+Renegade+D+Mid+Football+Cleat")
+(2, u'5,2,Riddell Youth Revolution Speed Custom Footbal,,199.99,http://images.acmesports.sports/Riddell+Youth+Revolution+Speed+Custom+Football+Helmet')
+>>> productsGroupByCategoryId = productsMap.groupByKey()
+>>> for i in productsGroupByCategoryId.take(5): print(i)
+... 
+(2, <pyspark.resultiterable.ResultIterable object at 0xe02090>)
+(4, <pyspark.resultiterable.ResultIterable object at 0xe027d0>)
+(6, <pyspark.resultiterable.ResultIterable object at 0xe026d0>)
+(8, <pyspark.resultiterable.ResultIterable object at 0xe02b50>)
+(10, <pyspark.resultiterable.ResultIterable object at 0xe02710>)
+
+# test logic sort/rank collection result iterable
+sorted(iterable, key, order)
+
+>>> t = productsGroupByCategoryId.first()
+>>> l = sorted(t[1], key=lambda k: float(k.split(",")[4]), reverse=True)
+>>> type(l)
+<type 'list'>
+>>> l[:3]
+[u'16,2,Riddell Youth 360 Custom Football Helmet,,299.99,http://images.acmesports.sports/Riddell+Youth+360+Custom+Football+Helmet', u'11,2,Fitness Gear 300 lb Olympic Weight Set,,209.99,http://images.acmesports.sports/Fitness+Gear+300+lb+Olympic+Weight+Set', u'5,2,Riddell Youth Revolution Speed Custom Footbal,,199.99,http://images.acmesports.sports/Riddell+Youth+Revolution+Speed+Custom+Football+Helmet']
+
+# apply flatmap across dataset to get top 3 orders by price in desc order
+
+>>> topNProductsByCategory = productsGroupByCategoryId. \
+flatMap(lambda p: sorted(p[1], key=lambda k: float(k.split(",")[4]), \
+reverse=True)[:3])
+>>> for i in topNProductsByCategory.take(10): print(i)
+... 
+16,2,Riddell Youth 360 Custom Football Helmet,,299.99,http://images.acmesports.sports/Riddell+Youth+360+Custom+Football+Helmet
+11,2,Fitness Gear 300 lb Olympic Weight Set,,209.99,http://images.acmesports.sports/Fitness+Gear+300+lb+Olympic+Weight+Set
+5,2,Riddell Youth Revolution Speed Custom Footbal,,199.99,http://images.acmesports.sports/Riddell+Youth+Revolution+Speed+Custom+Football+Helmet
+
+66,4,SOLE F85 Treadmill,,1799.99,http://images.acmesports.sports/SOLE+F85+Treadmill
+60,4,SOLE E25 Elliptical,,999.99,http://images.acmesports.sports/SOLE+E25+Elliptical
+71,4,Diamondback Adult Response XE Mountain Bike 2,,349.98,http://images.acmesports.sports/Diamondback+Adult+Response+XE+Mountain+Bike+2014
+
+117,6,YETI Tundra 65 Chest Cooler,,399.99,http://images.acmesports.sports/YETI+Tundra+65+Chest+Cooler
+106,6,Teeter Hang Ups NXT-S Inversion Table,,299.99,http://images.acmesports.sports/Teeter+Hang+Ups+NXT-S+Inversion+Table
+100,6,Quik Shade Summit SX170 10 FT. x 10 FT. Canop,,199.99,http://
+images.acmesports.sports/Quik+Shade+Summit+SX170+10+FT.+x+10+FT.+Canopy
+
+162,8,YETI Tundra 65 Chest Cooler,,399.99,http://images.acmesports.sports/YETI+Tundra+65+Chest+Cooler
+
+=======================================================
+
+### key ranking - get top n priced products - groupByKey and flatMap ###
+>>> products = sc.textFile("/user/cloudera/demos/data-master/retail_db/products")
+>>> productsFilter = products.filter(lambda p: p.split(",")[4] != "")
+>>> productsMap = productsFilter.map(lambda p: (int(p.split(",")[1]), p))
+>>> productsGroupByCategoryId = productsMap.groupByKey()
+>>> for i in productsGroupByCategoryId.take(5): print(i)
+... 
+(2, <pyspark.resultiterable.ResultIterable object at 0x1aaca10>)
+(3, <pyspark.resultiterable.ResultIterable object at 0x1aac5d0>)
+(4, <pyspark.resultiterable.ResultIterable object at 0x1aac610>)
+(5, <pyspark.resultiterable.ResultIterable object at 0x1aac3d0>)
+(6, <pyspark.resultiterable.ResultIterable object at 0x1aac690>)
+---getting data for id 59
+>>> t = productsGroupByCategoryId. \
+filter(lambda p: p[0] == 59). \
+first()
+>>> l = sorted(t[1], key=lambda k: float(k.split(",")[4]), reverse=True)
+>>> help(map)
+map(...)
+    map(function, sequence[, sequence, ...]) -> list
+    
+    Return a list of the results of applying the function to the items of
+    the argument sequence(s).  If more than one sequence is given, the
+    function is called with an argument list consisting of the corresponding
+    item of each sequence, substituting None for missing values when not all
+    sequences have the same length.  If the function is None, return a list of
+    the items of the sequence (or a list of tuples if more than one sequence).
+---get all prices
+>>> l_map = map(lambda p: float(p.split(",")[4]), l)
+>>> sorted(l_map, reverse=True)
+[100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 70.0, 69.969999999999999, 34.0, 32.0, 32.0, 30.0, 30.0, 30.0, 30.0, 28.0]
+>>> set(sorted(l_map, reverse=True))
+set([32.0, 34.0, 100.0, 70.0, 69.969999999999999, 28.0, 30.0])
+>>> sorted(set(l_map), reverse=True)
+[100.0, 70.0, 69.969999999999999, 34.0, 32.0, 30.0, 28.0]
+--get top 3 prices
+>>> topNPrices = sorted(set(l_map), reverse=True)[:3]
+[100.0, 70.0, 69.969999999999999]
+
+--find data in topNPrices (100, 70, 69)
+>>> import itertools as it
+>>> topNPriceProducts = it.takewhile(lambda p: float(p.split(",")[4]) in topNPrices, l)
+>>> for i in topNPriceProducts: print(i)
+... 
+1338,59,Nike Men's Home Game Jersey Chicago Bears Jar,,100.0,http://images.acmesports.sports/Nike+Men%27s+Home+Game+Jersey+Chicago+Bears+Jared+Allen+%2369
+1339,59,Nike Men's Home Game Jersey New York Giants E,,100.0,http://images.acmesports.sports/Nike+Men%27s+Home+Game+Jersey+New+York+Giants+Eli+Manning+%2310
+1345,59,Nike Men's Home Game Jersey St. Louis Rams Gr,,100.0,http://images.acmesports.sports/Nike+Men%27s+Home+Game+Jersey+St.+Louis+Rams+Greg+Robinson...
+1326,59,"Nike Youth Home Game Jersey Cleveland Browns ",,70.0,http://images.acmesports.sports/Nike+Youth+Home+Game+Jersey+Cleveland+Browns+Johnny+Manziel...
+1340,59,"Majestic Men's Replica Texas Rangers Russell ",,69.97,http://images.acmesports.sports/Majestic+Men%27s+Replica+Texas+Rangers+Russell+Wilson+%233+Home...
+
+===============================================================================================
+
+### define top n priced products per category id with arguments (products per cat id, topN) ###
+
+>>> def getTopN_PricedProductsPerCategoryId(productsPerCategoryId, topN):
+...         productsSorted = sorted(productsPerCategoryId[1],
+...             key=lambda k: float(k.split(",")[4]), reverse=True)
+...         productsPrices = map(lambda p: float(p.split(",")[4]), productsSorted)
+...         topNPrices = sorted(set(productsPrices), reverse=True)[:topN]
+...         import itertools as it
+...         return it.takewhile(lambda p: float(p.split(",")[4]) in topNPrices, productsSorted)
+... 
+>>> getTopN_PricedProductsPerCategoryId(t, 3)
+<itertools.takewhile object at 0x1ab31b8>
+>>> list(getTopN_PricedProductsPerCategoryId(t, 3))
+[u'1323,59,"Nike Men\'s Home Game Jersey Cleveland Browns ",,100.0,http://images.acmesports.sports/Nike+Men%27s+Home+Game+Jersey+Cleveland+Browns+Johnny+Manziel...', u"1345,59,Nike Men's Home Game Jersey St. Louis Rams Gr,,100.0,http://images.acmesports.sports/Nike+Men%27s+Home+Game+Jersey+St.+Louis+Rams+Greg+Robinson...", u'1326,59,"Nike Youth Home Game Jersey Cleveland Browns ",,70.0,http://images.acmesports.sports/Nike+Youth+Home+Game+Jersey+Cleveland+Browns+Johnny+Manziel...', u'1340,59,"Majestic Men\'s Replica Texas Rangers Russell ",,69.97,http://images.acmesports.sports/Majestic+Men%27s+Replica+Texas+Rangers+Russell+Wilson+%233+Home...']
+
+# use flatMap on function
+
+>>> topNPricedProducts = productsGroupByCategoryId. \
+flatMap(lambda p: getTopN_PricedProductsPerCategoryId(p, 3))
+
+>>> for i in topNPricedProducts.collect(): print(i)
+...
+1279,57,PUMA Men's evoPOWER 1 Tricks FG Soccer Cleat,,189.99,http://images.acmesports.sports/PUMA+Men%27s+evoPOWER+1+Tricks+FG+Soccer+Cleat
+1297,57,PUMA Men's evoSPEED 1.2 Tricks FG Soccer Clea,,174.99,http://images.acmesports.sports/PUMA+Men%27s+evoSPEED+1.2+Tricks+FG+Soccer+Cleat
+1281,57,adidas Brazuca 2014 Official Match Ball,,159.99,http://images.acmesports.sports/adidas+Brazuca+2014+Official+Match+Ball
+1289,57,adidas Brazuca Final Rio Official Match Ball,,159.99,http://images.acmesports.sports/adidas+Brazuca+Final+Rio+Official+Match+Ball
+1319,58,"Majestic Men's Authentic Los Angeles Dodgers ",,241.0,http://images.acmesports.sports/Majestic+Men%27s+Authentic+Los+Angeles+Dodgers+Yasiel+Puig...
+1299,58,Majestic Men's Authentic New York Yankees Der,,194.0,http://images.acmesports.sports/Majestic+Men%27s+Authentic+New+York+Yankees+Derek+Jeter+%232...
+1302,58,Majestic Men's 2014 All-Star Game Derek Jeter,,130.0,http://images.acmesports.sports/Majestic+Men%27s+2014+All-Star+Game+Derek+Jeter+%232+American...
+
+=====================================================================
+
+### set operations - union, intersection, minus ###
+#join datasets
+
+>>> orders201312 = orders.filter(lambda o: o.split(",")[1][:7] == "2013-12"). \
+... map(lambda o: (int(o.split(",")[0]), o))
+>>> for i in orders201312.take(5): print(i)
+...
+(20916, u'20916,2013-12-01 00:00:00.0,11503,CLOSED')
+(20917, u'20917,2013-12-01 00:00:00.0,10441,PENDING_PAYMENT')
+(20918, u'20918,2013-12-01 00:00:00.0,1664,PENDING')
+(20919, u'20919,2013-12-01 00:00:00.0,383,COMPLETE')
+(20920, u'20920,2013-12-01 00:00:00.0,4799,PROCESSING')
+>>> orders201401 = orders.filter(lambda o: o.split(",")[1][:7] == "2014-01"). \
+... map(lambda o: (int(o.split(",")[0]), o))
+>>> for i in orders201401.take(5): print(i)
+... 
+(25876, u'25876,2014-01-01 00:00:00.0,3414,PENDING_PAYMENT')
+(25877, u'25877,2014-01-01 00:00:00.0,5549,PENDING_PAYMENT')
+(25878, u'25878,2014-01-01 00:00:00.0,9084,PENDING')
+(25879, u'25879,2014-01-01 00:00:00.0,5118,PENDING')
+(25880, u'25880,2014-01-01 00:00:00.0,10146,CANCELED')
+
+>>> orderItemsMap = orderItems.map(lambda oi: (int(oi.split(",")[1]), oi))
+>>> for i in orderItemsMap.take(5): print(i)
+... 
+(1, u'1,1,957,1,299.98,299.98')
+(2, u'2,2,1073,1,199.99,199.99')
+(2, u'3,2,502,5,250.0,50.0')
+(2, u'4,2,403,1,129.99,129.99')
+(4, u'5,4,897,2,49.98,24.99')
+>>> orders201312Join = orders201312.join(orderItemsMap)
+>>> orders201401Join = orders201401.join(orderItemsMap)
+>>> for i in orders201312Join.take(5): print(i)
+... 
+(20916, (u'20916,2013-12-01 00:00:00.0,11503,CLOSED', u'52252,20916,957,1,299.98,299.98'))
+(20916, (u'20916,2013-12-01 00:00:00.0,11503,CLOSED', u'52253,20916,365,2,119.98,59.99'))
+(20916, (u'20916,2013-12-01 00:00:00.0,11503,CLOSED', u'52254,20916,897,5,124.95,24.99'))
+(20918, (u'20918,2013-12-01 00:00:00.0,1664,PENDING', u'52258,20918,957,1,299.98,299.98'))
+(20918, (u'20918,2013-12-01 00:00:00.0,1664,PENDING', u'52259,20918,1073,1,199.99,199.99'))
+>>> for i in orders201401Join.take(5): print(i)
+... 
+(25876, (u'25876,2014-01-01 00:00:00.0,3414,PENDING_PAYMENT', u'64768,25876,365,2,119.98,59.99'))
+(25878, (u'25878,2014-01-01 00:00:00.0,9084,PENDING', u'64771,25878,191,1,99.99,99.99'))
+(25878, (u'25878,2014-01-01 00:00:00.0,9084,PENDING', u'64772,25878,823,2,103.98,51.99'))
+(25878, (u'25878,2014-01-01 00:00:00.0,9084,PENDING', u'64773,25878,1004,1,399.98,399.98'))
+(25878, (u'25878,2014-01-01 00:00:00.0,9084,PENDING', u'64774,25878,191,3,299.97,99.99'))
+
+>>> orderItems201312 = orders201312.join(orderItemsMap).map(lambda oi: oi[1][1])
+>>> orderItems201401 = orders201401.join(orderItemsMap).map(lambda oi: oi[1][1])
+>>> for i in orderItems201312.take(5): print(i)
+... 
+52252,20916,957,1,299.98,299.98                                                 
+52253,20916,365,2,119.98,59.99
+52254,20916,897,5,124.95,24.99
+52258,20918,957,1,299.98,299.98
+52259,20918,1073,1,199.99,199.99
+>>> for i in orderItems201401.take(5): print(i)
+... 
+64768,25876,365,2,119.98,59.99                                                  
+64771,25878,191,1,99.99,99.99
+64772,25878,823,2,103.98,51.99
+64773,25878,1004,1,399.98,399.98
+64774,25878,191,3,299.97,99.99
+
+==========================================================================
+
+### set operations - union (does not give distinct) ###
+
+# get product ids sold sold in 2013-12 and 2014-01
+
+>>> products201312 = orderItems201312.map(lambda p: int(p.split(",")[2]))
+>>> products201401= orderItems201401.map(lambda p: int(p.split(",")[2]))
+
+>>> for i in products201312.take(3): print(i)
+... 
+957
+365
+897
+>>> for i in products201401.take(3): print(i)
+... 
+365
+191
+823
+
+>>> allProducts = products201312.union(products201401)
+>>> for i in allProducts.take(5): print(i)
+... 
+957
+365
+897
+957
+1073
+>>> products201312.count()
+14729
+>>> products201401.count()
+14666
+>>> allProducts.count()
+29395                                                                           
+--distinct
+>>> allProducts = products201312.union(products201401).distinct()
+>>> allProducts.count()
+100                                                                             
+
+==============================================================================
+
+### set operations - intersect and minus/subtract
+
+# get product ids sold in both 2013-12 and 2014-01
+
+>>> products201312 = orderItems201312.map(lambda p: int(p.split(",")[2]))
+>>> products201401= orderItems201401.map(lambda p: int(p.split(",")[2]))
+
+>>> commonProducts = products201312.intersection(products201401)
+>>> for i in commonProducts.take(5): print(i)
+... 
+768                                                                             
+1004
+804
+724
+276
+>>> commonProducts.count()
+98
+# subtract - minus get product ids sold in 2013-12 but not in 2014-01 / vince versa
+>>> products201312Only = products201312.subtract(products201401)
+
+>>> for i in products201312Only.collect(): print(i)
+... 
+127
+127
+127
+>>> products201401Only = products201401.subtract(products201312)
+>>> for i in products201401Only.collect(): print(i)
+... 
+58                                                                              
+58
+>>> productsSoldOnlyInOneMonth = products201312Only.union(products201401Only)
+>>> for i in productsSoldOnlyInOneMonth.collect(): print(I)
+... 
+>>> for i in productsSoldOnlyInOneMonth.collect(): print(i)
+... 
+127
+127
+127
+58
+58
+
+========================================================================================
+
+### saving data into text file format ###
+
+#save as text file with delimiters - revenue per order id
+
+>>> orderItems = sc.textFile("/user/cloudera/retail_db/order_items")
+
+>>> orderItemsMap = orderItems.map(lambda oi: (int(oi.split(",")[1]), float(oi.split(",")[4])))
+>>> from operator import add
+>>> revenuePerOrderId = orderItemsMap.reduceByKey(add)
+>>> for i in revenuePerOrderId.take(5): print(i)
+... 
+(1, 299.98000000000002)
+(2, 579.98000000000002)
+(4, 699.85000000000002)
+(5, 1129.8600000000001)
+(7, 579.92000000000007)
+
+--testing
+>>> t = (1, 299.98000000000002)
+>>> t[0] + "\t" + t[1]
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+TypeError: unsupported operand type(s) for +: 'int' and 'str'
+>>> str(t[0]) + "\t" + str(t[1])
+'1\t299.98'
+>>> revenuePerOrderId = orderItemsMap.\
+reduceByKey(add).\
+map(lambda r: str(r[0]) + "\t" + str(r[1]))
+
+>>> for i in revenuePerOrderId.take(10): print(i)
+... 
+1	299.98
+2	579.98
+4	699.85
+5	1129.86
+7	579.92
+8	729.84
+9	599.96
+10	651.92
+11	919.79
+12	1299.87
+
+>>> help(revenuePerOrderId.saveAsTextFile)
+
+Help on method saveAsTextFile in module pyspark.rdd:
+
+saveAsTextFile(self, path, compressionCodecClass=None) method of pyspark.rdd.PipelinedRDD instance
+    Save this RDD as a text file, using string representations of elements.
+    
+    @param path: path to text file
+    @param compressionCodecClass: (None by default) string i.e.
+        "org.apache.hadoop.io.compress.GzipCodec"
+    
+    >>> tempFile = NamedTemporaryFile(delete=True)
+    >>> tempFile.close()
+    >>> sc.parallelize(range(10)).saveAsTextFile(tempFile.name)
+    >>> from fileinput import input
+    >>> from glob import glob
+    >>> ''.join(sorted(input(glob(tempFile.name + "/part-0000*"))))
+    '0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n'
+    
+    Empty lines are tolerated when saving to text files.
+    
+    >>> tempFile2 = NamedTemporaryFile(delete=True)
+    >>> tempFile2.close()
+    >>> sc.parallelize(['', 'foo', '', 'bar', '']).saveAsTextFile(tempFile2.name)
+    >>> ''.join(sorted(input(glob(tempFile2.name + "/part-0000*"))))
+    '\n\n\nbar\nfoo\n'
+    
+***specify directory in hdfs that does not exist***
+>>> revenuePerOrderId.saveAsTextFile("/user/cloudera/demos/textfile")
+[cloudera@quickstart ~]$ hadoop fs -ls /user/cloudera/saveAsTextFile
+Found 2 items
+-rw-r--r--   1 cloudera cloudera          0 2018-03-08 16:20 /user/cloudera/saveAsTextFile/_SUCCESS
+-rw-r--r--   1 cloudera cloudera     737298 2018-03-08 16:20 /user/cloudera/saveAsTextFile/part-00000
+[cloudera@quickstart ~]$ hadoop fs -tail /user/cloudera/saveAsTextFile/part-00000
+1589.94
+68787	299.98
+68788	799.98
+68789	1249.94
+68790	799.89
+68791	499.98
+>>> for i in sc.textFile("/user/cloudera/saveAsTextFile").take(10): print(i)
+... 
+1	299.98
+2	579.98
+4	699.85
+5	1129.86
+7	579.92
+8	729.84
+9	599.96
+10	651.92
+11	919.79
+12	1299.87
+
+=============================================================================
+
+### saving data in text file format using compression (reduce storage requirements & i/o performance) ###
+
+    Using compressionCodecClass
+    
+    >>> tempFile3 = NamedTemporaryFile(delete=True)
+    >>> tempFile3.close()
+    >>> codec = "org.apache.hadoop.io.compress.GzipCodec"
+    >>> sc.parallelize(['foo', 'bar']).saveAsTextFile(tempFile3.name, codec)
+    >>> from fileinput import input, hook_compressed
+    >>> result = sorted(input(glob(tempFile3.name + "/part*.gz"), openhook=hook_compressed))
+    >>> b''.join(result).decode('utf-8')
+    u'bar\nfoo\n'
+
+--check compression available on server
+# cd /etc/hadoop/conf
+# vim core-site.xml or vim hdfs-site.xml
+
+    gzip - org.apache.hadoop.io.compress.GzipCodec
+    bzip2 - org.apache.hadoop.io.compress.BZip2Codec
+    LZO - com.hadoop.compression.lzo.LzopCodec
+    Snappy - org.apache.hadoop.io.compress.SnappyCodec
+    Deflate - org.apache.hadoop.io.compress.DeflateCodec
+
+>>> revenuePerOrderId.\
+... saveAsTextFile("/user/cloudera/saveAsTextFileComp", compressionCodecClass = "org.apache.hadoop.io.compress.GzipCodec")
+>>> for i in sc.textFile("/user/cloudera/saveAsTextFileComp").take(10): print(i)
+... 
+1	299.98
+2	579.98
+4	699.85
+5	1129.86
+7	579.92
+8	729.84
+9	599.96
+10	651.92
+11	919.79
+12	1299.87
+
+[cloudera@quickstart conf]$ hadoop fs -ls /user/cloudera/saveAsTextFileComp
+Found 2 items
+-rw-r--r--   1 cloudera cloudera          0 2018-03-08 16:45 /user/cloudera/saveAsTextFileComp/_SUCCESS
+-rw-r--r--   1 cloudera cloudera     257227 2018-03-08 16:45 /user/cloudera/saveAsTextFileComp/part-00000.gz
+
+=====================================================================
+
+### save data in different file formats ###
+
+steps:
+1. make sure data is represented as dataframe
+2. use write or save API to save as dataframe into different file formats
+3. use compression algorithm if required
+
+formats - orc, json, parquet, avro (with databricks pluggin)
+
+>>> orderItems = sc.textFile("/user/cloudera/retail_db/order_items")
+>>> orderItemsMap = orderItems.map(lambda oi: (int(oi.split(",")[1]), float(oi.split(",")[4])))
+>>> from operator import add
+>>> revenuePerOrderId = orderItemsMap.reduceByKey(add).\
+map(lambda x: (x[0], round(x[1], 2)))
+>>> for i in revenuePerOrderId.take(5): print(i)
+... 
+(1, 299.98000000000002)
+(2, 579.98000000000002)
+(4, 699.85000000000002)
+(5, 1129.8600000000001)
+(7, 579.92000000000007)
+
+--convert to df
+>>> help(revenuePerOrderId.toDF)
+Help on method toDF in module pyspark.sql.context:
+
+toDF(self, schema=None, sampleRatio=None) method of pyspark.rdd.PipelinedRDD instance
+    Converts current :class:`RDD` into a :class:`DataFrame`
+    
+    This is a shorthand for ``sqlContext.createDataFrame(rdd, schema, sampleRatio)``
+    
+    :param schema: a StructType or list of names of columns
+    :param samplingRatio: the sample ratio of rows used for inferring
+    :return: a DataFrame
+    
+    >>> rdd.toDF().collect()
+    [Row(name=u'Alice', age=1)]
+
+--assign schema
+>>> revenueDF = revenuePerOrderId.toDF(schema=["order_id", "order_revenue"])
+>>> revenueDF.show()
++--------+-------------+
+|order_id|order_revenue|
++--------+-------------+
+|       1|       299.98|
+|       2|       579.98|
+|       4|       699.85|
+|       5|      1129.86|
+|       7|       579.92|
+|       8|       729.84|
+|       9|       599.96|
+|      10|       651.92|
+|      11|       919.79|
+|      12|      1299.87|
+|      13|       127.96|
+|      14|       549.94|
+|      15|       925.91|
+|      16|       419.93|
+|      17|       694.84|
+|      18|       449.96|
+|      19|       699.96|
+|      20|       879.86|
+|      21|       372.91|
+|      23|       299.98|
++--------+-------------+
+
+#save as json (2 options)
+>>> revenueDF.save("/user/cloudera/JSON1", "json")
+/usr/lib/spark/python/pyspark/sql/dataframe.py:167: UserWarning: insertInto is deprecated. Use write.save() instead.
+  warnings.warn("insertInto is deprecated. Use write.save() instead.")
+>>> revenueDF.write.json("/user/cloudera/JSON2")
+
+--read json file
+>>> sqlContext.read.json("/user/cloudera/JSON2").show()
++--------+-------------+
+|order_id|order_revenue|
++--------+-------------+
+|       1|       299.98|
+|       2|       579.98|
+|       4|       699.85|
+|       5|      1129.86|
+|       7|       579.92|
+|       8|       729.84|
+|       9|       599.96|
+|      10|       651.92|
+|      11|       919.79|
+|      12|      1299.87|
+|      13|       127.96|
+|      14|       549.94|
+|      15|       925.91|
+|      16|       419.93|
+|      17|       694.84|
+|      18|       449.96|
+|      19|       699.96|
+|      20|       879.86|
+|      21|       372.91|
+|      23|       299.98|
++--------+-------------+
+
+==========================================================
+
+***solving problem statements***
+
+==========================================================
+
+/*********************************************************************************\
+
+PROBLEM STATEMENT
+***### get daily revenue per product (name) ####***
+
+@ get daily revenue by product considering completed and closed orders]
+
+@ data need to be sorted by asc order by date and then desc order by revenue
+completed for each product for each day
+
+@ data should be delimited by "," in order: 
+order_date, 
+daily_revenue_per_product,
+product_name
+
+@ orders & order_items data available in hdfs directories:
+/user/cloudera/retail_db/orders
+/user/cloudera/retail_db//order_items
+
+@ products data available in local directory:
+/home/cloudera/data-master/retail_db/products
+
+final output:
+
+@ hdfs avro data - /user/cloudera/daily_revenue_avro_python
+@ hdfs text data - /user/cloudera/daily_revenue_txt_python
+
+@ local data - /home/cloudera/daily_revenue_python
+@ solution data - /home/cloudera/daily_revenue_python.txt
+
+/*********************************************************************************\
+
+# performance tuning
+
+--check resource manager - hostname:8088 (memory total / # vcore total / # cluster nodes)
+
+--checking data size
+[cloudera@quickstart ~]$ du -s -h /home/cloudera/data-master/retail_db/products
+176K	/home/cloudera/data-master/retail_db/products
+[cloudera@quickstart ~]$ hadoop fs -du -s -h /user/cloudera/retail_db/orders
+2.9 M  2.9 M  /user/cloudera/retail_db/orders
+[cloudera@quickstart ~]$ hadoop fs -du -s -h /user/cloudera/retail_db/order_items
+5.2 M  5.2 M  /user/cloudera/retail_db/order_items
+
+--checking spark parameters
+
+***recommendation - use 2 executor tasks per each node ex: 10 nodes -> 20 executor tasks***
+
+>>> spark-submit
+Options:
+  --master MASTER_URL         spark://host:port, mesos://host:port, yarn, or local.
+  --deploy-mode DEPLOY_MODE   Whether to launch the driver program locally ("client") or
+                              on one of the worker machines inside the cluster ("cluster")
+                              (Default: client).
+  --class CLASS_NAME          Your application's main class (for Java / Scala apps).
+  --name NAME                 A name of your application.
+  --jars JARS                 Comma-separated list of local jars to include on the driver
+                              and executor classpaths.
+  --packages                  Comma-separated list of maven coordinates of jars to include
+                              on the driver and executor classpaths. Will search the local
+                              maven repo, then maven central and any additional remote
+                              repositories given by --repositories. The format for the
+                              coordinates should be groupId:artifactId:version.
+  --exclude-packages          Comma-separated list of groupId:artifactId, to exclude while
+                              resolving the dependencies provided in --packages to avoid
+                              dependency conflicts.
+  --repositories              Comma-separated list of additional remote repositories to
+                              search for the maven coordinates given with --packages.
+  --py-files PY_FILES         Comma-separated list of .zip, .egg, or .py files to place
+                              on the PYTHONPATH for Python apps.
+  --files FILES               Comma-separated list of files to be placed in the working
+                              directory of each executor.
+
+  --conf PROP=VALUE           Arbitrary Spark configuration property.
+  --properties-file FILE      Path to a file from which to load extra properties. If not
+                              specified, this will look for conf/spark-defaults.conf.
+
+  --driver-memory MEM         Memory for driver (e.g. 1000M, 2G) (Default: 1024M).
+  --driver-java-options       Extra Java options to pass to the driver.
+  --driver-library-path       Extra library path entries to pass to the driver.
+  --driver-class-path         Extra class path entries to pass to the driver. Note that
+                              jars added with --jars are automatically included in the
+                              classpath.
+
+  --executor-memory MEM       Memory per executor (e.g. 1000M, 2G) (Default: 1G).
+
+  --proxy-user NAME           User to impersonate when submitting the application.
+
+  --help, -h                  Show this help message and exit
+  --verbose, -v               Print additional debug output
+  --version,                  Print the version of current Spark
+
+ Spark standalone with cluster deploy mode only:
+  --driver-cores NUM          Cores for driver (Default: 1).
+
+ Spark standalone or Mesos with cluster deploy mode only:
+  --supervise                 If given, restarts the driver on failure.
+  --kill SUBMISSION_ID        If given, kills the driver specified.
+  --status SUBMISSION_ID      If given, requests the status of the driver specified.
+
+ Spark standalone and Mesos only:
+  --total-executor-cores NUM  Total cores for all executors.
+
+ Spark standalone and YARN only:
+  --executor-cores NUM        Number of cores per executor. (Default: 1 in YARN mode,
+                              or all available cores on the worker in standalone mode)
+
+ YARN-only:
+  --driver-cores NUM          Number of cores used by the driver, only in cluster mode
+                              (Default: 1).
+  --queue QUEUE_NAME          The YARN queue to submit to (Default: "default").
+  --num-executors NUM         Number of executors to launch (Default: 2).
+  --archives ARCHIVES         Comma separated list of archives to be extracted into the
+                              working directory of each executor.
+  --principal PRINCIPAL       Principal to be used to login to KDC, while running on
+                              secure HDFS.
+  --keytab KEYTAB             The full path to the file that contains the keytab for the
+                              principal specified above. This keytab will be copied to
+                              the node running the Application Master via the Secure
+                              Distributed Cache, for renewing the login tickets and the
+                              delegation tokens periodically.
+
+
+--launch 2 executors with 512 mem each                            
+
+>>> pyspark --master yarn --num-executors 2 --executor-memory 512M
+
+====================================================================================
+
+# get daily revenue per product - FILTER
+
+[cloudera@quickstart ~]$ pyspark --master yarn --num-executors 2 --executor-memory 512M
+
+>>> orders = sc.textFile("/user/cloudera/retail_db/orders")
+>>> orderItems = sc.textFile("/user/cloudera/retail_db/order_items")
+>>> for i in orders.take(5): print(i)
+...
+1,2013-07-25 00:00:00.0,11599,CLOSED
+2,2013-07-25 00:00:00.0,256,PENDING_PAYMENT
+3,2013-07-25 00:00:00.0,12111,COMPLETE
+4,2013-07-25 00:00:00.0,8827,CLOSED
+5,2013-07-25 00:00:00.0,11318,COMPLETE
+
+>>> for i in orderItems.take(5): print(i)
+...
+1,1,957,1,299.98,299.98
+2,2,1073,1,199.99,199.99
+3,2,502,5,250.0,50.0
+4,2,403,1,129.99,129.99
+5,4,897,2,49.98,24.99
+
+>>> orders.count()
+>>> orderItems.count()
+
+--check order status
+>>> for i in orders.map(lambda o: o.split(",")[3]).distinct().collect(): print(i)
+... 
+PENDING
+SUSPECTED_FRAUD
+CLOSED
+ON_HOLD
+CANCELED
+PROCESSING
+PENDING_PAYMENT
+COMPLETE
+PAYMENT_REVIEW
+
+--filter to retreive COMPLETE OR CLOSED orders
+>>> ordersFilter = orders.filter(lambda f: f.split(",")[3] in ['COMPLETE', 'CLOSED'])
+>>> for i in ordersFilter.take(5): print(i)
+... 
+1,2013-07-25 00:00:00.0,11599,CLOSED
+3,2013-07-25 00:00:00.0,12111,COMPLETE
+4,2013-07-25 00:00:00.0,8827,CLOSED
+5,2013-07-25 00:00:00.0,11318,COMPLETE
+6,2013-07-25 00:00:00.0,7130,COMPLETE
+>>> ordersFilter.count()
+30455
+
+=================================================================================
+
+#get daily revenue per product - SELECT COLUMNS AND JOIN 
+
+--create paired rdds
+---------------------------------------------------------------------
+ORDERS - tuple (order_id, order_data)
+ORDER_ITEMS - tuple (order_item_order_id, (order_item_product_id, order_item_subtotal))
+JOIN KEY - order_id=order_item_order_id
+------------------------------------------------------------------------
+
+>>> ordersMap = ordersFilter.map(lambda o: (int(o.split(",")[0]), o.split(",")[1]))
+>>> orderItemsMap = orderItems.map(lambda oi: (int(oi.split(",")[1]), (int(oi.split(",")[2]), float(oi.split(",")[4]))))
+
+>>> for i in ordersMap.take(5): print(i)
+... 
+(1, u'2013-07-25 00:00:00.0')
+(3, u'2013-07-25 00:00:00.0')
+(4, u'2013-07-25 00:00:00.0')
+(5, u'2013-07-25 00:00:00.0')
+(6, u'2013-07-25 00:00:00.0')
+>>> for i in orderItemsMap.take(5): print(i)
+... 
+(1, (957, 299.98000000000002))
+(2, (1073, 199.99000000000001))
+(2, (502, 250.0))
+(2, (403, 129.99000000000001))
+(4, (897, 49.979999999999997))
+
+--join output
+>>> ordersJoin = ordersMap.join(orderItemsMap)
+>>> for i in ordersJoin.take(5): print(i)
+... 
+(65536, (u'2014-05-16 00:00:00.0', (957, 299.98000000000002)))                  
+(65536, (u'2014-05-16 00:00:00.0', (1014, 149.94)))
+(65536, (u'2014-05-16 00:00:00.0', (957, 299.98000000000002)))
+(65536, (u'2014-05-16 00:00:00.0', (1014, 149.94)))
+(4, (u'2013-07-25 00:00:00.0', (897, 49.979999999999997)))
+
+===================================================================================
+
+#get daily revenue per product - AGGREGATE
+
+--output tuple ((date, product id), subtotal)
+>>> ordersJoinMap = ordersJoin.\
+map(lambda o: ((o[1][0], o[1][1][0]), o[1][1][1]))
+
+>>> for i in ordersJoinMap.take(5): print(i)
+... 
+((u'2014-05-16 00:00:00.0', 957), 299.98000000000002)
+((u'2014-05-16 00:00:00.0', 1014), 149.94)
+((u'2014-05-16 00:00:00.0', 957), 299.98000000000002)
+((u'2014-05-16 00:00:00.0', 1014), 149.94)
+((u'2014-01-10 00:00:00.0', 365), 59.990000000000002)
+
+--get daily revenue per product id
+>>> from operator import add
+>>> dailyRevenuePerProductId = ordersJoinMap.reduceByKey(add)
+>>> for i in dailyRevenuePerProductId.take(5): print(i)
+... 
+((u'2013-08-08 00:00:00.0', 835), 63.979999999999997)                           
+((u'2014-03-26 00:00:00.0', 1073), 3799.8100000000004)
+((u'2013-11-13 00:00:00.0', 977), 149.94999999999999)
+((u'2014-07-14 00:00:00.0', 1014), 2998.7999999999997)
+((u'2013-10-27 00:00:00.0', 567), 125.0)
+
+--alternate method
+>>> dailyRevenuePerProductId = ordersJoinMap.reduceByKey(lambda x, y: x+y)
+>>> for i in dailyRevenuePerProductId.take(5): print(i)
+... 
+((u'2014-03-26 00:00:00.0', 1073), 3799.8100000000004)                          
+((u'2013-11-13 00:00:00.0', 977), 149.94999999999999)
+((u'2013-11-29 00:00:00.0', 1014), 4998.0)
+((u'2013-10-27 00:00:00.0', 567), 125.0)
+((u'2014-06-21 00:00:00.0', 1073), 1199.9400000000001)
+
+======================================================================================
+
+#get daily revenue per product - LOAD PRODUCTS
+
+--load local data into spark
+>>> productsRaw = open("/home/cloudera/data-master/retail_db/products/part-00000").\
+read().\
+splitlines()
+>>> type(productsRaw)
+<type 'list'>
+
+--convert to rdd
+>>> products = sc.parallelize(productsRaw)
+>>> type(products)
+<class 'pyspark.rdd.RDD'>
+>>> for i in products.take(3): print(i)
+... 
+1,2,Quest Q64 10 FT. x 10 FT. Slant Leg Instant U,,59.98,http://images.acmesports.sports/Quest+Q64+10+FT.+x+10+FT.+Slant+Leg+Instant+Up+Canopy
+2,2,Under Armour Men's Highlight MC Football Clea,,129.99,http://images.acmesports.sports/Under+Armour+Men%27s+Highlight+MC+Football+Cleat
+3,2,Under Armour Men's Renegade D Mid Football Cl,,89.99,http://images.acmesports.sports/Under+Armour+Men%27s+Renegade+D+Mid+Football+Cleat
+
+--convert to tuple (product_id, product name)
+>>> productsMap = products.map(lambda p: (int(p.split(",")[0]), p.split(",")[2]))
+>>> for i in productsMap.take(5): print(i)
+... 
+(1, 'Quest Q64 10 FT. x 10 FT. Slant Leg Instant U')
+(2, "Under Armour Men's Highlight MC Football Clea")
+(3, "Under Armour Men's Renegade D Mid Football Cl")
+(4, "Under Armour Men's Renegade D Mid Football Cl")
+(5, 'Riddell Youth Revolution Speed Custom Footbal')
+
+>>> for i in dailyRevenuePerProductId.take(5): print(i)
+... 
+((u'2014-03-26 00:00:00.0', 1073), 3799.8100000000004)                          
+((u'2013-11-13 00:00:00.0', 977), 149.94999999999999)
+((u'2013-11-29 00:00:00.0', 1014), 4998.0)
+((u'2013-10-27 00:00:00.0', 567), 125.0)
+((u'2014-06-21 00:00:00.0', 1073), 1199.9400000000001)
+
+--desired output (product id), (date, revenue))
+>>> dailyRevenuePerProductIdMap = dailyRevenuePerProductId.\
+map(lambda r: (r[0][1], (r[0][0], r[1])))
+
+>>> for i in dailyRevenuePerProductIdMap.take(5): print(i)
+... 
+(1073, (u'2014-03-26 00:00:00.0', 3799.8100000000004))
+(1014, (u'2014-07-14 00:00:00.0', 2998.8000000000002))
+(567, (u'2013-10-27 00:00:00.0', 125.0))
+(1073, (u'2014-06-21 00:00:00.0', 1199.9400000000001))
+(703, (u'2013-09-07 00:00:00.0', 119.94))
+
+==============================================================================
+
+# get daily revenue per product - JOIN/SORT
+
+>>> dailyRevenuePerProductNameJoin = dailyRevenuePerProductIdMap.join(productsMap)
+>>> for i in dailyRevenuePerProductNameJoin.take(5): print(i)
+... 
+(24, ((u'2013-12-04 00:00:00.0', 159.97999999999999), 'Elevation Training Mask 2.0'))
+(24, ((u'2013-08-18 00:00:00.0', 399.94999999999999), 'Elevation Training Mask 2.0'))
+(24, ((u'2013-10-06 00:00:00.0', 79.989999999999995), 'Elevation Training Mask 2.0'))
+(24, ((u'2014-06-11 00:00:00.0', 319.95999999999998), 'Elevation Training Mask 2.0'))
+(24, ((u'2014-07-17 00:00:00.0', 79.989999999999995), 'Elevation Training Mask 2.0'))
+
+--prepare to sort date asc and revenue desc
+
+>>> dailyRevenuePerProductName = dailyRevenuePerProductNameJoin.\
+map(lambda t:\
+((t[1][0][0], -t[1][0][1]), t[1][0][0] + "," + str(t[1][0][1]) + "," + t[1][1]))
+>>> for i in dailyRevenuePerProductName.take(5): print(i)
+... 
+((u'2013-12-04 00:00:00.0', -159.97999999999999), u'2013-12-04 00:00:00.0,159.98,Elevation Training Mask 2.0')
+((u'2013-08-18 00:00:00.0', -399.94999999999999), u'2013-08-18 00:00:00.0,399.95,Elevation Training Mask 2.0')
+((u'2013-10-06 00:00:00.0', -79.989999999999995), u'2013-10-06 00:00:00.0,79.99,Elevation Training Mask 2.0')
+((u'2014-06-11 00:00:00.0', -319.95999999999998), u'2014-06-11 00:00:00.0,319.96,Elevation Training Mask 2.0')
+((u'2014-04-15 00:00:00.0', -159.97999999999999), u'2014-04-15 00:00:00.0,159.98,Elevation Training Mask 2.0')
+
+--sort data
+>>> dailyRevenuePerProductNameSorted = dailyRevenuePerProductName.sortByKey()
+>>> for i in dailyRevenuePerProductNameSorted.take(5): print(i)
+
+--final output - just take string (2nd element in tuple)
+>>> dailyRevenuePerProductNameFinal = dailyRevenuePerProductNameSorted.map(lambda r: r[1])
+>>> for i in dailyRevenuePerProductNameFinal.take(10): print(i)
+... 
+2013-07-25 00:00:00.0,5599.72,Field & Stream Sportsman 16 Gun Fire Safe
+2013-07-25 00:00:00.0,5099.49,Nike Men's Free 5.0+ Running Shoe
+2013-07-25 00:00:00.0,4499.7,Diamondback Women's Serene Classic Comfort Bi
+2013-07-25 00:00:00.0,3359.44,Perfect Fitness Perfect Rip Deck
+2013-07-25 00:00:00.0,2999.85,Pelican Sunstream 100 Kayak
+2013-07-25 00:00:00.0,2798.88,O'Brien Men's Neoprene Life Vest
+2013-07-25 00:00:00.0,1949.85,Nike Men's CJ Elite 2 TD Football Cleat
+2013-07-25 00:00:00.0,1650.0,Nike Men's Dri-FIT Victory Golf Polo
+2013-07-25 00:00:00.0,1079.73,Under Armour Girls' Toddler Spine Surge Runni
+2013-07-25 00:00:00.0,599.99,Bowflex SelectTech 1090 Dumbbells
+
+=====================================================================================
+
+# get revenue per product - SAVE AS TEXT FILE
+
+--2 methods
+>>> dailyRevenuePerProductNameFinal.saveAsTextFile("/user/cloudera/daily_revenue_txt_python")
+>>> output = sc.textFile("/user/cloudera/daily_revenue_txt_python")
+>>> for i in output.take(5): print(i)
+... 
+2013-07-25 00:00:00.0,5599.72,Field & Stream Sportsman 16 Gun Fire Safe
+2013-07-25 00:00:00.0,5099.49,Nike Men's Free 5.0+ Running Shoe
+2013-07-25 00:00:00.0,4499.7,Diamondback Women's Serene Classic Comfort Bi
+2013-07-25 00:00:00.0,3359.44,Perfect Fitness Perfect Rip Deck
+2013-07-25 00:00:00.0,2999.85,Pelican Sunstream 100 Kayak
+
+--determine # of output files - coalesce
+>>> dailyRevenuePerProductNameFinal.\
+coalesce(3).\
+saveAsTextFile("/user/cloudera/daily_revenue_txt_python_coalesce")
+
+[cloudera@quickstart ~]$ hadoop fs -ls /user/cloudera/daily_revenue_txt_python_coalesce
+Found 4 items
+-rw-r--r--   1 cloudera cloudera          0 2018-03-12 17:34 /user/cloudera/daily_revenue_txt_python_coalesce/_SUCCESS
+-rw-r--r--   1 cloudera cloudera     208908 2018-03-12 17:34 /user/cloudera/daily_revenue_txt_python_coalesce/part-00000
+-rw-r--r--   1 cloudera cloudera     126324 2018-03-12 17:34 /user/cloudera/daily_revenue_txt_python_coalesce/part-00001
+-rw-r--r--   1 cloudera cloudera     268659 2018-03-12 17:34 /user/cloudera/daily_revenue_txt_python_coalesce/part-00002
+
+=============================================================================
+
+# get daily revenue per product - SAVE AS AVRO
+
+$ pyspark --master yarn \
+--num-executors 2 \
+--executor-memory 512M \
+--packages com.databricks:spark-avro_2.10:2.0.1
+or
+--jars <PATH_TO_JAR>
+
+>>> orders = sc.textFile("/user/cloudera/retail_db/orders")
+>>> orderItems = sc.textFile("/user/cloudera/retail_db/order_items")
+>>> ordersFilter = orders.filter(lambda f: f.split(",")[3] in ['COMPLETE', 'CLOSED'])
+>>> ordersMap = ordersFilter.map(lambda o: (int(o.split(",")[0]), o.split(",")[1]))
+>>> orderItemsMap = orderItems.map(lambda oi: (int(oi.split(",")[1]), (int(oi.split(",")[2]), float(oi.split(",")[4]))))
+>>> ordersJoin = ordersMap.join(orderItemsMap)
+>>> ordersJoinMap = ordersJoin.\
+... map(lambda o: ((o[1][0], o[1][1][0]), o[1][1][1]))
+>>> from operator import add
+>>> dailyRevenuePerProductId = ordersJoinMap.reduceByKey(add)
+>>> productsRaw = open("/home/cloudera/data-master/retail_db/products/part-00000").\
+... read().\
+... splitlines()
+>>> products = sc.parallelize(productsRaw)
+>>> productsMap = products.map(lambda p: (int(p.split(",")[0]), p.split(",")[2]))
+>>> dailyRevenuePerProductIdMap = dailyRevenuePerProductId.\
+... map(lambda r: (r[0][1], (r[0][0], r[1])))
+>>> dailyRevenuePerProductNameJoin = dailyRevenuePerProductIdMap.join(productsMap)
+>>> for i in dailyRevenuePerProductNameJoin.take(5): print(i)
+... 
+(24, ((u'2013-12-04 00:00:00.0', 159.97999999999999), 'Elevation Training Mask 2.0'))
+(24, ((u'2013-08-18 00:00:00.0', 399.94999999999999), 'Elevation Training Mask 2.0'))
+(24, ((u'2013-10-06 00:00:00.0', 79.989999999999995), 'Elevation Training Mask 2.0'))
+(24, ((u'2014-06-11 00:00:00.0', 319.95999999999998), 'Elevation Training Mask 2.0'))
+(24, ((u'2014-07-17 00:00:00.0', 79.989999999999995), 'Elevation Training Mask 2.0'))
+>>> dailyRevenuePerProductName_AVRO_SCHEMA = dailyRevenuePerProductNameJoin.\
+map(lambda t:\
+((t[1][0][0], -t[1][0][1]), (t[1][0][0], round(t[1][0][1], 2), t[1][1])))
+>>> for i in dailyRevenuePerProductName_AVRO_SCHEMA.take(5): print(i)
+... 
+((u'2013-11-02 00:00:00.0', -79.989999999999995), (u'2013-11-02 00:00:00.0', 79.989999999999995, 'Elevation Training Mask 2.0'))
+((u'2013-08-26 00:00:00.0', -239.97), (u'2013-08-26 00:00:00.0', 239.97, 'Elevation Training Mask 2.0'))
+((u'2014-03-20 00:00:00.0', -159.97999999999999), (u'2014-03-20 00:00:00.0', 159.97999999999999, 'Elevation Training Mask 2.0'))
+((u'2013-11-19 00:00:00.0', -239.97), (u'2013-11-19 00:00:00.0', 239.97, 'Elevation Training Mask 2.0'))
+((u'2013-10-12 00:00:00.0', -239.97), (u'2013-10-12 00:00:00.0', 239.97, 'Elevation Training Mask 2.0'))
+>>> dailyRevenuePerProductNameSortedAVRO = dailyRevenuePerProductName_AVRO_SCHEMA.sortByKey()
+>>> dailyRevenuePerProductNameFinalAVRO = dailyRevenuePerProductNameSortedAVRO.map(lambda r: r[1])
+>>> for i in dailyRevenuePerProductNameFinalAVRO.take(10): print(i)
+... 
+(u'2013-07-25 00:00:00.0', 5599.7200000000003, 'Field & Stream Sportsman 16 Gun Fire Safe')
+(u'2013-07-25 00:00:00.0', 5099.4899999999998, "Nike Men's Free 5.0+ Running Shoe")
+(u'2013-07-25 00:00:00.0', 4499.6999999999998, "Diamondback Women's Serene Classic Comfort Bi")
+(u'2013-07-25 00:00:00.0', 3359.4400000000001, 'Perfect Fitness Perfect Rip Deck')
+(u'2013-07-25 00:00:00.0', 2999.8499999999999, 'Pelican Sunstream 100 Kayak')
+(u'2013-07-25 00:00:00.0', 2798.8800000000001, "O'Brien Men's Neoprene Life Vest")
+(u'2013-07-25 00:00:00.0', 1949.8499999999999, "Nike Men's CJ Elite 2 TD Football Cleat")
+(u'2013-07-25 00:00:00.0', 1650.0, "Nike Men's Dri-FIT Victory Golf Polo")
+(u'2013-07-25 00:00:00.0', 1079.73, "Under Armour Girls' Toddler Spine Surge Runni")
+(u'2013-07-25 00:00:00.0', 599.99000000000001, 'Bowflex SelectTech 1090 Dumbbells')
+
+--save as avro
+>>> avroDF = dailyRevenuePerProductNameFinalAVRO.\
+... coalesce(2).\
+... toDF(schema=["order_date", "revenue_per_product", "product_name"])
+>>> avroDF.save("/user/cloudera/daily_revenue_avro_python", "com.databricks.spark.avro")
+>>> sqlContext.load("/user/cloudera/daily_revenue_avro_python", "com.databricks.spark.avro").show()
++--------------------+-------------------+--------------------+
+|          order_date|revenue_per_product|        product_name|
++--------------------+-------------------+--------------------+
+|2013-07-25 00:00:...|            5599.72|Field & Stream Sp...|
+|2013-07-25 00:00:...|            5099.49|Nike Men's Free 5...|
+|2013-07-25 00:00:...|             4499.7|Diamondback Women...|
+|2013-07-25 00:00:...|            3359.44|Perfect Fitness P...|
+|2013-07-25 00:00:...|            2999.85|Pelican Sunstream...|
+
+===============================================================================
+
+# get daily revenue per product - COPY FILES TO LOCAL
+
+[cloudera@quickstart /]$ mkdir -p /home/cloudera/daily_revenue_python
+[cloudera@quickstart /]$ cd /home/cloudera/daily_revenue_python
+[cloudera@quickstart daily_revenue_python]$ pwd
+/home/cloudera/daily_revenue_python
+[cloudera@quickstart daily_revenue_python]$ hadoop fs -get /user/cloudera/daily_revenue_txt_python /home/cloudera/daily_revenue_python
+[cloudera@quickstart daily_revenue_python]$ hadoop fs -get /user/cloudera/daily_revenue_avro_python /home/cloudera/daily_revenue_python
+[cloudera@quickstart daily_revenue_python]$ ls -ltr
+total 8
+drwxrwxr-x 2 cloudera cloudera 4096 Mar 12 18:16 daily_revenue_txt_python
+drwxrwxr-x 2 cloudera cloudera 4096 Mar 12 18:16 daily_revenue_avro_python
+[cloudera@quickstart daily_revenue_python]$ ls daily_revenue_txt_python/
+part-00000  part-00001  part-00002  _SUCCESS
+[cloudera@quickstart daily_revenue_python]$ ls daily_revenue_avro_python/
+part-r-00000-a41cc86c-1390-4dc8-9905-2b73c46629d9.avro  part-r-00001-a41cc86c-1390-4dc8-9905-2b73c46629d9.avro  _SUCCESS
+
+===================================================================================
+
+#get daily revenue per product - APPLICATION
+
+PROCESS
+1. create directory for application
+2. create src/main/python
+3. create program file with .py extension
+4. ship code to cluster
+5. run on cluster using spark-submit
+
+[cloudera@quickstart ~]$ mkdir retail
+[cloudera@quickstart ~]$ cd retail/
+[cloudera@quickstart retail]$ mkdir -p src/main/python
+[cloudera@quickstart retail]$ cd src/main/python/
+[cloudera@quickstart python]$ vim dailyRevenuePerProduct.py
+
+from pyspark import SparkConf, SparkContext
+
+conf = SparkConf().\
+setAppName("Daily Revenue Per Product").\
+setMaster("yarn-client")
+sc = SparkContext(conf=conf)
+
+orders = sc.textFile("/user/cloudera/retail_db/orders")
+orderItems = sc.textFile("/user/cloudera/retail_db/order_items")
+ordersFilter = orders.filter(lambda f: f.split(",")[3] in ['COMPLETE', 'CLOSED'])
+ordersMap = ordersFilter.map(lambda o: (int(o.split(",")[0]), o.split(",")[1]))
+orderItemsMap = orderItems.map(lambda oi: (int(oi.split(",")[1]), (int(oi.split(",")[2]), float(oi.split(",")[4]))))
+ordersJoin = ordersMap.join(orderItemsMap)
+ordersJoinMap = ordersJoin.\
+map(lambda o: ((o[1][0], o[1][1][0]), o[1][1][1]))
+from operator import add
+dailyRevenuePerProductId = ordersJoinMap.reduceByKey(add)
+productsRaw = open("/home/cloudera/data-master/retail_db/products/part-00000").\
+read().\
+splitlines()
+products = sc.parallelize(productsRaw)
+productsMap = products.map(lambda p: (int(p.split(",")[0]), p.split(",")[2]))
+dailyRevenuePerProductIdMap = dailyRevenuePerProductId.\
+map(lambda r: (r[0][1], (r[0][0], r[1])))
+dailyRevenuePerProductNameJoin = dailyRevenuePerProductIdMap.join(productsMap)
+dailyRevenuePerProductName = dailyRevenuePerProductNameJoin.\
+map(lambda t:\
+((t[1][0][0], -t[1][0][1]), t[1][0][0] + "," + str(t[1][0][1]) + "," + t[1][1]))
+dailyRevenuePerProductNameSorted = dailyRevenuePerProductName.sortByKey()
+dailyRevenuePerProductNameFinal = dailyRevenuePerProductNameSorted.map(lambda r: r[1])
+dailyRevenuePerProductNameFinal.\
+coalesce(3).\
+saveAsTextFile("/user/cloudera/daily_revenue_txt_python_spark_app")
+
+====================================================================
+
+#get daily revenue per product - EXECUTE APP VIA SPARK SUBMIT
+
+[cloudera@quickstart ~]$ cd retail/
+[cloudera@quickstart retail]$ pwd
+/home/cloudera/retail
+[cloudera@quickstart retail]$ spark-submit \
+> --master yarn \
+> --num-executors 2 \
+> --executor-memory 512M \
+> src/main/python/dailyRevenuePerProduct.py
+
+--checking data (validate via spark if file format not txt)
+[cloudera@quickstart retail]$ hadoop fs -ls /user/cloudera/daily_revenue_txt_python_spark_app
+Found 4 items
+-rw-r--r--   1 cloudera cloudera          0 2018-03-12 18:55 /user/cloudera/daily_revenue_txt_python_spark_app/_SUCCESS
+-rw-r--r--   1 cloudera cloudera     202389 2018-03-12 18:55 /user/cloudera/daily_revenue_txt_python_spark_app/part-00000
+-rw-r--r--   1 cloudera cloudera     188669 2018-03-12 18:55 /user/cloudera/daily_revenue_txt_python_spark_app/part-00001
+-rw-r--r--   1 cloudera cloudera     212833 2018-03-12 18:55 /user/cloudera/daily_revenue_txt_python_spark_app/part-00002
+
+[cloudera@quickstart retail]$ hadoop fs -tail /user/cloudera/daily_revenue_txt_python_spark_app/part-00000
+0,99.96,Team Golf Texas Longhorns Putter Grip
+2013-11-21 00:00:00.0,89.95,Hirzl Women's Soffft Flex Golf Glove
+2013-11-21 00:00:00.0,59.96,Hirzl Women's Hybrid Golf Glove
+2013-11-21 00:00:00.0,49.98,Team Golf St. Louis Cardinals Putter Grip
+2013-11-21 00:00:00.0,44.97,Hirzl Men's Hybrid Golf Glove
+
+==============================================================================
+
+### SPARK SQL ###
+
+OBJECTIVES:
+1. create spark df from existing rdd
+2. perform operations on df
+3. write spark sql app
+4. use hive with orc from spark sql
+5. write spark sql app that reads/writes data from hive tables
+
+***problem statement***
+
+- create orders and order_items tables in hive database (TXT format load data into tables)
+- create orders and order_items tables in hive database (ORC format load data into tables)
+- get daily revenue by product considering completed and closed orders
+- data sorted by date asc and order by revenue for each product daily desc
+- store output in hive table
+
+- orders and order_items available in hive 
+  - products data available locally /home/cloudera/data-master/retail_db/products
+	- create dataframe and join with 2 other tables
+
+- store solution under local /home/cloudera/daily_revenue_python_sql.txt
+
+===============================================================================
+
+### create hive tables - text file format ###
+--input text file data location
+hadoop fs -ls /user/cloudera/retail_db
+
+hive> create database demos_retail_db;
+OK
+Time taken: 1.904 seconds
+hive> use demos_retail_db;
+OK
+Time taken: 0.088 seconds
+hive> set hive.metastore.warehouse.dir;
+hive.metastore.warehouse.dir=/user/hive/warehouse
+hive> dfs -ls /user/hive/warehouse/;
+Found 2 items
+drwxrwxrwx   - cloudera supergroup          0 2018-02-24 20:43 /user/hive/warehouse/demos.db
+drwxrwxrwx   - cloudera supergroup          0 2018-03-13 18:18 /user/hive/warehouse/demos_retail_db.db
+
+hive> create table orders_hive (
+    > order_id int,
+    > order_date string,
+    > order_customer_id int,
+    > order_status string
+    > ) row format delimited fields terminated by ','
+    > stored as textfile;
+
+--load data from local filesystem
+hive> load data local inpath '/home/cloudera/data-master/retail_db/orders' into table orders_hive;
+Loading data to table demos_retail_db.orders_hive
+Table demos_retail_db.orders_hive stats: [numFiles=1, totalSize=2999944]
+OK
+
+hive> dfs -ls /user/hive/warehouse/demos_retail_db.db/orders_hive;
+Found 1 items
+-rwxrwxrwx   1 cloudera supergroup    2999944 2018-03-13 19:06 /user/hive/warehouse/demos_retail_db.db/orders_hive/part-00000
+
+hive> select * from orders_hive limit 3;
+OK
+1	2013-07-25 00:00:00.0	11599	CLOSED
+2	2013-07-25 00:00:00.0	256	PENDING_PAYMENT
+3	2013-07-25 00:00:00.0	12111	COMPLETE
+
+hive> create table order_items_hive (
+    > order_item_id int,
+    > order_item_order_id int,
+    > order_item_product_id int,
+    > order_item_quantity int,
+    > order_item_subtotal float,
+    > order_item_product_price float
+    > ) row format delimited fields terminated by ','
+    > stored as textfile;
+
+hive> load data local inpath '/home/cloudera/data-master/retail_db/order_items' into table order_items_hive;
+Loading data to table demos_retail_db.order_items_hive
+Table demos_retail_db.order_items_hive stats: [numFiles=1, totalSize=5408880]
+
+hive> dfs -ls /user/hive/warehouse/demos_retail_db.db/order_items_hive;
+Found 1 items
+-rwxrwxrwx   1 cloudera supergroup    5408880 2018-03-13 19:13 /user/hive/warehouse/demos_retail_db.db/order_items_hive/part-00000
+hive> select * from order_items_hive limit 3;
+OK
+1	1	957	1	299.98	299.98
+2	2	1073	1	199.99	199.99
+3	2	502	5	250.0	50.0
+
+=====================================================================
+
+### create hive tables - ORC file format ###
+
+hive> create database demos_retail_db_orc;
+OK
+Time taken: 0.068 seconds
+hive> use demos_retail_db_orc;
+OK
+Time taken: 0.014 seconds
+
+hive> create table orders_hive_orc (
+    > order_id int,
+    > order_date string,
+    > order_customer_id int,
+    > order_status string
+    > ) stored as orc;
+OK
+Time taken: 0.081 seconds
+hive> create table order_items_hive_orc (
+    > order_item_id int,
+    > order_item_order_id int,
+    > order_item_product_id int,
+    > order_item_quantity int,
+    > order_item_subtotal float,
+    > order_item_product_price float
+    > ) stored as orc;
+OK
+
+-staging text table insert into orc
+
+hive> insert into table order_hive_orc select * from demos_retail_db.orders_hive;
+
+hive> select * from orders_hive_orc limit 5;
+OK
+1	2013-07-25 00:00:00.0	11599	CLOSED
+2	2013-07-25 00:00:00.0	256	PENDING_PAYMENT
+3	2013-07-25 00:00:00.0	12111	COMPLETE
+4	2013-07-25 00:00:00.0	8827	CLOSED
+5	2013-07-25 00:00:00.0	11318	COMPLETE
+
+hive> insert into table order_items_hive_orc select * from demos_retail_db.order_items_hive;
+
+hive> select * from order_items_hive_orc limit 5;
+OK
+1	1	957	1	299.98	299.98
+2	2	1073	1	199.99	199.99
+3	2	502	5	250.0	50.0
+4	2	403	1	129.99	129.99
+5	4	897	2	49.98	24.99
+
+===========================================================
+
+### use hive via spark sql pyspark ###
+
+[cloudera@quickstart conf]$ sudo su -
+[root@quickstart ~]# cd /etc/hive/conf
+[root@quickstart conf]# ls
+beeline-log4j.properties.template  hive-env.sh.template  hive-exec-log4j.properties  hive-log4j.properties  hive-site.xml  ivysettings.xml
+[root@quickstart conf]# cp hive-site.xml /etc/spark/conf
+[root@quickstart conf]# cd /etc/hadoop/conf
+[root@quickstart conf]# ls
+core-site.xml  hadoop-env.sh  hadoop-metrics.properties  hdfs-site.xml  log4j.properties  mapred-site.xml  README  yarn-site.xml
+[root@quickstart conf]# cp hdfs-site.xml /etc/spark/conf
+[root@quickstart conf]# ls /etc/spark/conf
+docker.properties.template  hdfs-site.xml  log4j.properties.template    slaves           spark-defaults.conf           spark-env.sh
+fairscheduler.xml.template  hive-site.xml  metrics.properties.template  slaves.template  spark-defaults.conf.template  spark-env.sh.template
+
+or create symolic link ...
+
+[cloudera@quickstart ~]$ ln -s /etc/hive/conf/hive-site.xml /etc/spark/conf/hive-site.xml
+>>> sqlContext.sql("use demos_retail_db")
+>>> sqlContext.sql("show tables").show()
++----------------+-----------+
+|       tableName|isTemporary|
++----------------+-----------+
+|order_items_hive|      false|
+|     orders_hive|      false|
++----------------+-----------+
+>>> for i in sqlContext.sql("describe orders_hive").collect(): print(i)
+... 
+Row(col_name=u'order_id', data_type=u'int', comment=None)
+Row(col_name=u'order_date', data_type=u'string', comment=None)
+Row(col_name=u'order_customer_id', data_type=u'int', comment=None)
+Row(col_name=u'order_status', data_type=u'string', comment=None)
+>>> for i in sqlContext.sql("describe formatted orders_hive").collect(): print(i)
+... 
+18/03/14 18:30:33 WARN lazy.LazyStruct: Extra bytes detected at the end of the row! Ignoring similar problems.
+Row(result=u'# col_name            \tdata_type           \tcomment             ')
+Row(result=u'\t \t ')
+Row(result=u'order_id            \tint                 \t                    ')
+Row(result=u'order_date          \tstring              \t                    ')
+Row(result=u'order_customer_id   \tint                 \t                    ')
+Row(result=u'order_status        \tstring              \t                    ')
+Row(result=u'\t \t ')
+Row(result=u'# Detailed Table Information\t \t ')
+Row(result=u'Database:           \tdemos_retail_db     \t ')
+Row(result=u'Owner:              \tcloudera            \t ')
+Row(result=u'CreateTime:         \tTue Mar 13 18:31:25 PDT 2018\t ')
+Row(result=u'LastAccessTime:     \tUNKNOWN             \t ')
+Row(result=u'Protect Mode:       \tNone                \t ')
+Row(result=u'Retention:          \t0                   \t ')
+Row(result=u'Location:           \thdfs://quickstart.cloudera:8020/user/hive/warehouse/demos_retail_db.db/orders_hive\t ')
+Row(result=u'Table Type:         \tMANAGED_TABLE       \t ')
+Row(result=u'Table Parameters:\t \t ')
+Row(result=u'\tCOLUMN_STATS_ACCURATE\ttrue                ')
+Row(result=u'\tnumFiles            \t1                   ')
+Row(result=u'\ttotalSize           \t2999944             ')
+Row(result=u'\ttransient_lastDdlTime\t1520993170          ')
+Row(result=u'\t \t ')
+Row(result=u'# Storage Information\t \t ')
+Row(result=u'SerDe Library:      \torg.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe\t ')
+Row(result=u'InputFormat:        \torg.apache.hadoop.mapred.TextInputFormat\t ')
+Row(result=u'OutputFormat:       \torg.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat\t ')
+Row(result=u'Compressed:         \tNo                  \t ')
+Row(result=u'Num Buckets:        \t-1                  \t ')
+Row(result=u'Bucket Columns:     \t[]                  \t ')
+Row(result=u'Sort Columns:       \t[]                  \t ')
+Row(result=u'Storage Desc Params:\t \t ')
+Row(result=u'\tfield.delim         \t,                   ')
+Row(result=u'\tserialization.format\t,                   ')
+>>> sqlContext.sql("select * from orders_hive limit 5").show()
++--------+--------------------+-----------------+---------------+
+|order_id|          order_date|order_customer_id|   order_status|
++--------+--------------------+-----------------+---------------+
+|       1|2013-07-25 00:00:...|            11599|         CLOSED|
+|       2|2013-07-25 00:00:...|              256|PENDING_PAYMENT|
+|       3|2013-07-25 00:00:...|            12111|       COMPLETE|
+|       4|2013-07-25 00:00:...|             8827|         CLOSED|
+|       5|2013-07-25 00:00:...|            11318|       COMPLETE|
++--------+--------------------+-----------------+---------------+
+
+===============================================================================
+
+### hive functions ###
+
+hive> show functions;
+hive> use demos_retail_db;
+hive> describe function length;
+length(str | binary) - Returns the length of str or number of bytes in binary data
+hive> select length('Hello World');
+11
+hive> select order_status, length(order_status) from orders_hive limit 5;
+CLOSED	6
+PENDING_PAYMENT	15
+COMPLETE	8
+CLOSED	6
+COMPLETE	8
+
+==============================================================================
+
+### hive functions - STRINGS ###
+- substr / substring
+- instr
+- like
+- rlike (similar to regex)
+- length
+- lcase or lower
+- ucase or upper
+- initcap
+- trim, ltrim, rtrim
+- lpad, rpad
+- split
+- cast
+
+hive> create table customer (
+    > customer_id int,
+    > customer_fname varchar(45),
+    > customer_lname varchar(45),
+    > customer_email varchar(45),
+    > customer_password varchar(45),
+    > customer_street varchar(255),
+    > customer_city varchar(45),
+    > customer_state varchar(45),
+    > customer_zipcode varchar(45)
+    > ) row format delimited fields terminated by ','
+    > stored as textfile;
+hive> load data local inpath '/home/cloudera/data-master/retail_db/customers' into table customer;
+Loading data to table demos_retail_db.customer
+
+hive> describe function substr;
+substr(str, pos[, len]) - returns the substring of str that starts at pos and is of length len orsubstr(bin, pos[, len]) - returns the slice of byte array that starts at pos and is of length len
+
+hive> select substr('Hello World, How are you', 14);
+How are you
+hive> select substr('Hello World, How are you', 7, 5);
+World
+hive> select substr('Hello World, How are you', -3);
+you
+hive> select substr('Hello World, How are you', -7,3);
+are
+
+hive> describe function like;
+like(str, pattern) - Checks if str matches pattern
+hive> select like("Hello World", "Hello");
+false
+hive> select like("Hello World", "Hello%");
+true
+
+hive> select lcase("Hello World");
+hello world
+Time taken: 0.068 seconds, Fetched: 1 row(s)
+hive> select ucase("Hello World");
+HELLO WORLD
+
+hive> describe function trim;
+trim(str) - Removes the leading and trailing space characters from str 
+hive> select ' hello world ';
+ hello world 
+Time taken: 0.056 seconds, Fetched: 1 row(s)
+hive> select trim(' hello world ');
+hello world
+hive> select order_date from orders_hive limit 3;
+OK
+2013-07-25 00:00:00.0
+2013-07-25 00:00:00.0
+hive> select cast(substr(order_date, 6, 2) as int) from orders_hive limit 3;
+7
+7
+7
+hive> select split("Hello World, how are you", ' ');
+["Hello","World,","how","are","you"]
+hive> select index(split("Hello World, how are you", ' '), 4);
+you
+
+==================================================================
+
+### hive functions - DATES ###
+- current_date
+- current_timestramp
+- date_add
+- date_format
+- date_sub
+- datediff
+- day
+- dayofmonth
+- to_date
+- to_unix_timestamp
+- to_utc_timestamp
+- from_unixtime
+- minute
+- month
+- months_between
+- next_day
+
+hive> select current_date;
+2018-03-17
+hive> select current_timestamp;
+2018-03-17 15:37:36.02
+hive> select to_unix_timestamp(current_timestamp);
+1521326810
+hive> select from_unixtime(1521326810);
+2018-03-17 15:46:50
+hive> select to_date(from_unixtime(1521326810));
+2018-03-17
+hive> select to_date(order_date) from orders_hive limit 3;
+OK
+2013-07-25
+2013-07-25
+2013-07-25
+
+=================================================================
+
+### hive functions - AGGREGATE ###
+ - count
+ - min
+ - max
+ - avg
+
+ hive> select count(*) from orders_hive;
+68883
+hive> select sum(order_item_subtotal) from order_items_hive;
+3.432262059842491E7
+
+==================================================================
+
+### hive functions - CASE ###
+- case --> if(condition) 'x' else if(condition) 'y' else 'z'
+- nvl
+
+hive> describe function case;
+CASE a WHEN b THEN c [WHEN d THEN e]* [ELSE f] END - When a = b, returns c; when a = d, return e; else return f
+
+hive> select distinct order_status from orders_hive;
+CANCELED
+CLOSED
+COMPLETE
+ON_HOLD
+PAYMENT_REVIEW
+PENDING
+PENDING_PAYMENT
+PROCESSING
+SUSPECTED_FRAUD
+hive> select case order_status 
+    > when 'CLOSED' then 'No Action'
+    > when 'COMPLETE' then 'No Action'
+    > end from orders_hive limit 10;
+OK
+No Action
+NULL
+No Action
+No Action
+No Action
+No Action
+No Action
+NULL
+NULL
+NULL
+
+hive> select order_status, case order_status 
+    > when 'CLOSED' then 'No Action'
+    > when 'COMPLETE' then 'No Action'
+    > when 'ON_HOLD' then 'Pending Action'
+    > when 'PAYMENT_REVIEW' then 'Pending Action'
+    > when 'PENDING' then 'Pending Action'
+    > when 'PENDING_PAYMENT' then 'Pending Action'
+    > when 'PROCESSING' then 'Pending Action'
+    > else 'Risky'
+    > end from orders_hive limit 10;
+CLOSED	No Action
+PENDING_PAYMENT	Pending Action
+COMPLETE	No Action
+CLOSED	No Action
+COMPLETE	No Action
+COMPLETE	No Action
+COMPLETE	No Action
+PROCESSING	Pending Action
+PENDING_PAYMENT	Pending Action
+PENDING_PAYMENT	Pending Action
+
+OR...
+
+hive> select order_status, case
+    > when order_status IN ('CLOSED', 'COMPLETE') then 'No Action'
+    > when order_status IN ('ON_HOLD', 'PAYMENT_REVIEW', 'PENDING', 'PENDING_PAYMENT', 'PROCESSING') then 'Pending Action'
+    > else 'Risky'
+    > end from orders_hive limit 10;
+CLOSED	No Action
+PENDING_PAYMENT	Pending Action
+COMPLETE	No Action
+CLOSED	No Action
+COMPLETE	No Action
+COMPLETE	No Action
+COMPLETE	No Action
+PROCESSING	Pending Action
+PENDING_PAYMENT	Pending Action
+PENDING_PAYMENT	Pending Action
+
+hive> select nvl(order_status, 'Status Missing') from orders_hive limit 10;
+OK
+CLOSED
+PENDING_PAYMENT
+COMPLETE
+CLOSED
+COMPLETE
+COMPLETE
+COMPLETE
+PROCESSING
+PENDING_PAYMENT
+PENDING_PAYMENT
+
+================================================================
+
+### hive - ROW LEVEL TRANSFORMATIONS ###
+hive> select * from orders_hive limit 3;
+1	2013-07-25 00:00:00.0	11599	CLOSED
+2	2013-07-25 00:00:00.0	256	PENDING_PAYMENT
+3	2013-07-25 00:00:00.0	12111	COMPLETE
+
+hive> describe function substr;
+substr(str, pos[, len]) - returns the substring of str that starts at pos and is of length len orsubstr(bin, pos[, len]) - returns the slice of byte array that starts at pos and is of length len
+
+hive> select cast(concat(substr(order_date, 1, 4), substr(order_date, 6, 2)) as int) from orders_hive limit 3;
+201307
+201307
+201307
+
+--alternate better method
+hive> select date_format('2013-07-25 00:00:00.0', 'YYYYMM');
+201307
+hive> select cast(date_format(order_date, 'YYYYMM') as int) from orders_hive limit 3;
+OK
+201307
+201307
+201307
+
+=====================================================================
+
+### hive - JOINS ###
+1:N - OUTER JOINS
+1:1 - INNER JOIN
+hive> SET hive.auto.convert.join=false;
+hive> select o.*, c.*
+    > from orders_hive o join customer c
+    > on o.order_customer_id = c.customer_id
+    > limit 3;
+68883	2014-07-23 00:00:00.0	5533	COMPLETE	12435	Laura	Horton	XXXXXXXXX	XXXXXXXXX	5736 Honey Downs	Summerville	SC	29483
+68883	2014-07-23 00:00:00.0	5533	COMPLETE	12434	Mary	Mills	XXXXXXXXX	XXXXXXXXX	9720 Colonial Parade	Caguas	PR	00725
+68883	2014-07-23 00:00:00.0	5533	COMPLETE	12433	Benjamin	Garcia	XXXXXXXXX	XXXXXXXXX	5459 Noble Brook Landing	Levittown	NY	11756
+
+hive> select o.*, c.*
+    > from customer c left join orders_hive o
+    > on o.order_customer_id = c.customer_id
+    > limit 3;
+
+22945	2013-12-13 00:00:00.0	1	COMPLETE	1	Richard	Hernandez	XXXXXXXXX	XXXXXXXXX	6303 Heather Plaza	Brownsville	TX	78521
+57963	2013-08-02 00:00:00.0	2	ON_HOLD	2	Mary	Barrett	XXXXXXXXX	XXXXXXXXX	9526 Noble Embers Ridge	Littleton	CO	80126
+33865	2014-02-18 00:00:00.0	2	COMPLETE	2	Mary	Barrett	XXXXXXXXX	XXXXXXXXX	9526 Noble Embers Ridge	Littleton	CO	80126
+
+***hive nested queries / in statements not very efficient/slow performance***
+--find customers with no orders (will have null id with left join)
+
+hive> select * from customer c left join orders_hive o
+    > on o.order_customer_id = c.customer_id
+    > where o.order_customer_id is null;
+
+=====================================================================
+
+### hive - AGGREGATION ###
+
+--order status category count
+hive> select order_status, count(*)
+    > from orders_hive
+    > group by order_status;
+CANCELED	1428
+CLOSED	7556
+COMPLETE	22899
+ON_HOLD	3798
+PAYMENT_REVIEW	729
+PENDING	7610
+PENDING_PAYMENT	15030
+PROCESSING	8275
+SUSPECTED_FRAUD	1558
+
+--revenue at each order id level
+hive> select order_id, sum(oi.order_item_subtotal) as order_revenue
+    > from orders_hive join order_items_hive oi
+    > on o.order_id = oi.order_item_order_id
+    > group by o.order_id
+    > limit 3;
+68264	39.9900016784668
+68265	1139.8700256347656
+68266	899.9300231933594
+
+--add more fields. where clause, and having statement
+hive> select order_id, o.order_date, o.order_status, sum(oi.order_item_subtotal) as order_revenue
+    > from orders_hive o join order_items_hive oi
+    > on o.order_id = oi.order_item_order_id
+    > where o.order_status in ('COMPLETE', 'CLOSED')
+    > group by o.order_id, o.order_date, o.order_status
+    > having sum(oi.order_item_subtotal) >= 1000
+    > limit 3;
+5	2013-07-25 00:00:00.0	COMPLETE	1129.8600387573242
+12	2013-07-25 00:00:00.0	CLOSED	1299.8700256347656
+28	2013-07-25 00:00:00.0	COMPLETE	1159.9000129699707
+
+--revenue at each day level (not order id level)
+hive> select o.order_date,  round(sum(oi.order_item_subtotal), 2) as daily_revenue
+    > from orders_hive o join order_items_hive oi
+    > on o.order_id = oi.order_item_order_id
+    > where o.order_status in ('COMPLETE', 'CLOSED')
+    > group by o.order_date
+    > limit 3;
+2013-07-25 00:00:00.0	31547.23
+2013-07-26 00:00:00.0	54713.23
+2013-07-27 00:00:00.0	48411.48
+
+==================================================================
+
+### hive - SORTING (order by / sort by) ###
+hive> select order_id, o.order_date, o.order_status, round(sum(oi.order_item_subtotal), 2) as order_revenue
+    >     from orders_hive o join order_items_hive oi
+    >     on o.order_id = oi.order_item_order_id
+    >     where o.order_status in ('COMPLETE', 'CLOSED')
+    >     group by o.order_id, o.order_date, o.order_status
+    >     having sum(oi.order_item_subtotal) >= 1000
+    >     order by o.order_date, order_revenue desc
+    >     limit 3;
+57779	2013-07-25 00:00:00.0	COMPLETE	1649.8
+12	2013-07-25 00:00:00.0	CLOSED	1299.87
+28	2013-07-25 00:00:00.0	COMPLETE	1159.9
+
+--improve performance with distribute by / sort by 
+hive> select order_id, o.order_date, o.order_status, round(sum(oi.order_item_subtotal), 2) as order_revenue
+    >     from orders_hive o join order_items_hive oi
+    >     on o.order_id = oi.order_item_order_id
+    >     where o.order_status in ('COMPLETE', 'CLOSED')
+    >     group by o.order_id, o.order_date, o.order_status
+    >     having sum(oi.order_item_subtotal) >= 1000
+    >     distribute by o.order_date sort by o.order_date, order_revenue desc
+    >     limit 3;
+57779	2013-07-25 00:00:00.0	COMPLETE	1649.8
+12	2013-07-25 00:00:00.0	CLOSED	1299.87
+28	2013-07-25 00:00:00.0	COMPLETE	1159.9
+
+====================================================================
+
+### hive - SET OPERATIONS (union / union all)
+
+hive> select 1, "Hello"
+    > union all
+    > select 2, "World"
+    > union all
+    > select 1, "Hello"
+    > union all
+    > select 1, "World";
+    1	Hello
+    2	World
+    1	Hello
+    1	World
+hive> select 1, "Hello"
+    > union
+    > select 2, "World"
+    > union
+    > select 1, "Hello"
+    > union
+    > select 1, "World";
+    1	Hello
+    1	World
+    2	World
+
+=================================================================
+
+### hive analytics functions - AGGREGATIONS ###
+- OVER
+	- COUNT
+	- SUM
+	- MIN
+	- MAX
+	- AVG
+
+# problem statement - generate % for each order from subtotal
+hive> select order_id, o.order_date, o.order_status, oi.order_item_subtotal, 
+    >     round(sum(oi.order_item_subtotal) over (partition by o.order_id), 2) as order_revenue,
+    >     oi.order_item_subtotal / round(sum(oi.order_item_subtotal) over (partition by o.order_id), 2) as pct_revenue
+    >     from orders_hive o join order_items_hive oi
+    >     on o.order_id = oi.order_item_order_id
+    >     where o.order_status in ('COMPLETE', 'CLOSED')
+    >     order by o.order_date, order_revenue desc
+    >     limit 20;
+57779	2013-07-25 00:00:00.0	COMPLETE	149.94	1649.8	0.0908837449638782
+57779	2013-07-25 00:00:00.0	COMPLETE	499.95	1649.8	0.3030367391241552
+57779	2013-07-25 00:00:00.0	COMPLETE	299.95	1649.8	0.18180992375259503
+57779	2013-07-25 00:00:00.0	COMPLETE	399.98	1649.8	0.24244151472077108
+57779	2013-07-25 00:00:00.0	COMPLETE	299.98	1649.8	0.181828107034991
+12	2013-07-25 00:00:00.0	CLOSED	149.94	1299.87	0.11534999841630798
+12	2013-07-25 00:00:00.0	CLOSED	250.0	1299.87	0.19232692500019236
+12	2013-07-25 00:00:00.0	CLOSED	499.95	1299.87	0.38461539400634775
+12	2013-07-25 00:00:00.0	CLOSED	100.0	1299.87	0.07693077000007693
+12	2013-07-25 00:00:00.0	CLOSED	299.98	1299.87	0.23077693229809762
+28	2013-07-25 00:00:00.0	COMPLETE	59.99	1159.9	0.05171997730706681
+28	2013-07-25 00:00:00.0	COMPLETE	99.99	1159.9	0.08620570554683121
+28	2013-07-25 00:00:00.0	COMPLETE	299.98	1159.9	0.2586257530703751
+28	2013-07-25 00:00:00.0	COMPLETE	299.98	1159.9	0.2586257530703751
+28	2013-07-25 00:00:00.0	COMPLETE	399.96	1159.9	0.34482282218732485
+62	2013-07-25 00:00:00.0	CLOSED	50.0	1149.94	0.0434805294189262
+62	2013-07-25 00:00:00.0	CLOSED	299.98	1149.94	0.2608657938556169
+62	2013-07-25 00:00:00.0	CLOSED	399.98	1149.94	0.3478268526934693
+62	2013-07-25 00:00:00.0	CLOSED	399.98	1149.94	0.3478268526934693
+
+# add nested subquery with filter
+hive> select * from (
+    > select order_id, o.order_date, o.order_status, oi.order_item_subtotal, 
+    >     round(sum(oi.order_item_subtotal) over (partition by o.order_id), 2) as order_revenue,
+    >     oi.order_item_subtotal / round(sum(oi.order_item_subtotal) over (partition by o.order_id), 2) as pct_revenue
+    >     from orders_hive o join order_items_hive oi
+    >     on o.order_id = oi.order_item_order_id
+    >     where o.order_status in ('COMPLETE', 'CLOSED')) nest
+    >     where order_revenue >= 1000
+    >     order by nest.order_date, nest.order_revenue desc
+    >     limit 20;
+57779	2013-07-25 00:00:00.0	COMPLETE	499.95	1649.8	0.3030367391241552
+57779	2013-07-25 00:00:00.0	COMPLETE	299.95	1649.8	0.18180992375259503
+57779	2013-07-25 00:00:00.0	COMPLETE	399.98	1649.8	0.24244151472077108
+57779	2013-07-25 00:00:00.0	COMPLETE	299.98	1649.8	0.181828107034991
+57779	2013-07-25 00:00:00.0	COMPLETE	149.94	1649.8	0.0908837449638782
+12	2013-07-25 00:00:00.0	CLOSED	149.94	1299.87	0.11534999841630798
+12	2013-07-25 00:00:00.0	CLOSED	100.0	1299.87	0.07693077000007693
+12	2013-07-25 00:00:00.0	CLOSED	499.95	1299.87	0.38461539400634775
+12	2013-07-25 00:00:00.0	CLOSED	250.0	1299.87	0.19232692500019236
+12	2013-07-25 00:00:00.0	CLOSED	299.98	1299.87	0.23077693229809762
+28	2013-07-25 00:00:00.0	COMPLETE	99.99	1159.9	0.08620570554683121
+28	2013-07-25 00:00:00.0	COMPLETE	59.99	1159.9	0.05171997730706681
+28	2013-07-25 00:00:00.0	COMPLETE	399.96	1159.9	0.34482282218732485
+28	2013-07-25 00:00:00.0	COMPLETE	299.98	1159.9	0.2586257530703751
+28	2013-07-25 00:00:00.0	COMPLETE	299.98	1159.9	0.2586257530703751
+62	2013-07-25 00:00:00.0	CLOSED	50.0	1149.94	0.0434805294189262
+62	2013-07-25 00:00:00.0	CLOSED	399.98	1149.94	0.3478268526934693
+62	2013-07-25 00:00:00.0	CLOSED	399.98	1149.94	0.3478268526934693
+62	2013-07-25 00:00:00.0	CLOSED	299.98	1149.94	0.2608657938556169
+
+# add avg_revenue
+hive> select * from (
+    > select order_id, o.order_date, o.order_status, oi.order_item_subtotal, 
+    >     round(sum(oi.order_item_subtotal) over (partition by o.order_id), 2) as order_revenue,
+    >     oi.order_item_subtotal / round(sum(oi.order_item_subtotal) over (partition by o.order_id), 2) as pct_revenue,
+    >     round(avg(oi.order_item_subtotal) over (partition by o.order_id), 2) as avg_revenue
+    >     from orders_hive o join order_items_hive oi
+    >     on o.order_id = oi.order_item_order_id
+    >     where o.order_status in ('COMPLETE', 'CLOSED')) nest
+    >     where order_revenue >= 1000
+    >     order by nest.order_date, nest.order_revenue desc
+    >     limit 20;
+57779	2013-07-25 00:00:00.0	COMPLETE	499.95	1649.8	0.3030367391241552	329.96
+57779	2013-07-25 00:00:00.0	COMPLETE	299.95	1649.8	0.18180992375259503	329.96
+57779	2013-07-25 00:00:00.0	COMPLETE	399.98	1649.8	0.24244151472077108	329.96
+57779	2013-07-25 00:00:00.0	COMPLETE	299.98	1649.8	0.181828107034991	329.96
+57779	2013-07-25 00:00:00.0	COMPLETE	149.94	1649.8	0.0908837449638782	329.96
+12	2013-07-25 00:00:00.0	CLOSED	149.94	1299.87	0.11534999841630798	259.97
+12	2013-07-25 00:00:00.0	CLOSED	100.0	1299.87	0.07693077000007693	259.97
+12	2013-07-25 00:00:00.0	CLOSED	499.95	1299.87	0.38461539400634775	259.97
+12	2013-07-25 00:00:00.0	CLOSED	250.0	1299.87	0.19232692500019236	259.97
+12	2013-07-25 00:00:00.0	CLOSED	299.98	1299.87	0.23077693229809762	259.97
+28	2013-07-25 00:00:00.0	COMPLETE	99.99	1159.9	0.08620570554683121	231.98
+28	2013-07-25 00:00:00.0	COMPLETE	59.99	1159.9	0.05171997730706681	231.98
+28	2013-07-25 00:00:00.0	COMPLETE	399.96	1159.9	0.34482282218732485	231.98
+28	2013-07-25 00:00:00.0	COMPLETE	299.98	1159.9	0.2586257530703751	231.98
+28	2013-07-25 00:00:00.0	COMPLETE	299.98	1159.9	0.2586257530703751	231.98
+62	2013-07-25 00:00:00.0	CLOSED	50.0	1149.94	0.0434805294189262	287.49
+62	2013-07-25 00:00:00.0	CLOSED	399.98	1149.94	0.3478268526934693	287.49
+62	2013-07-25 00:00:00.0	CLOSED	399.98	1149.94	0.3478268526934693	287.49
+62	2013-07-25 00:00:00.0	CLOSED	299.98	1149.94	0.2608657938556169	287.49
+
+==================================================================
+
+### hive analytics functions - RANKING ###
+- RANK
+- ROW_NUMBER
+- DENSE_RANK
+- CUME_DIST
+- PERCENT_RANK
+- NTILE
+
+hive> select * from (
+    > select o.order_id, o.order_date, o.order_status, oi.order_item_subtotal, 
+    >     round(sum(oi.order_item_subtotal) over (partition by o.order_id), 2) as order_revenue,
+    >     oi.order_item_subtotal / round(sum(oi.order_item_subtotal) over (partition by o.order_id), 2) as pct_revenue,
+    >     round(avg(oi.order_item_subtotal) over (partition by o.order_id), 2) as avg_revenue,
+    >     rank() over (partition by o.order_id order by oi.order_item_subtotal desc) rank_revenue,
+    >     dense_rank() over (partition by o.order_id order by oi.order_item_subtotal desc) dense_rank_revenue,
+    >     percent_rank() over (partition by o.order_id order by oi.order_item_subtotal desc) pct_rank_revenue,
+    >     row_number() over (partition by o.order_id order by oi.order_item_subtotal desc) rn_orderby_revenue,
+    >     row_number() over (partition by o.order_id) rn_revenue
+    >     from orders_hive o join order_items_hive oi
+    >     on o.order_id = oi.order_item_order_id
+    >     where o.order_status in ('COMPLETE', 'CLOSED')) nest
+    >     where order_revenue >= 1000
+    >     order by nest.order_date, nest.order_revenue, nest.rank_revenue desc
+    >     limit 20;
+57782	2013-07-25 00:00:00.0	CLOSED	199.98	1049.85	0.19048435083825221	262.46	4	4	1.0	4	2
+57782	2013-07-25 00:00:00.0	CLOSED	199.99	1049.85	0.1904938853104387	262.46	3	3	0.6666666666666666	34
+57782	2013-07-25 00:00:00.0	CLOSED	249.9	1049.85	0.2380339990441343	262.46	2	2	0.3333333333333333	23
+57782	2013-07-25 00:00:00.0	CLOSED	399.98	1049.85	0.3809877706208774	262.46	1	1	0.0	1	1
+57757	2013-07-25 00:00:00.0	COMPLETE	119.98	1099.87	0.10908562226166148	219.97	5	5	1.0	5	4
+57757	2013-07-25 00:00:00.0	COMPLETE	129.99	1099.87	0.11818669978557836	219.97	4	4	0.75	4	3
+57757	2013-07-25 00:00:00.0	COMPLETE	150.0	1099.87	0.13637975397092386	219.97	3	3	0.5	3	1
+57757	2013-07-25 00:00:00.0	COMPLETE	199.95	1099.87	0.1817942092685883	219.97	2	2	0.25	2	2
+57757	2013-07-25 00:00:00.0	COMPLETE	499.95	1099.87	0.454553731083702	219.97	1	1	0.0	1	5
+57788	2013-07-25 00:00:00.0	COMPLETE	49.98	1119.86	0.044630578413584136	223.97	5	5	1.0	5	3
+57788	2013-07-25 00:00:00.0	COMPLETE	129.99	1119.86	0.11607701453142721	223.97	4	4	0.75	4	1
+57788	2013-07-25 00:00:00.0	COMPLETE	199.98	1119.86	0.1785758896000742	223.97	3	3	0.5	3	2
+57788	2013-07-25 00:00:00.0	COMPLETE	239.96	1119.86	0.21427679059334845	223.97	2	2	0.25	2	5
+57788	2013-07-25 00:00:00.0	COMPLETE	499.95	1119.86	0.4464397444386185	223.97	1	1	0.0	1	4
+5	2013-07-25 00:00:00.0	COMPLETE	99.96	1129.86	0.08847113720679789	225.97	5	4	1.0	5	5
+5	2013-07-25 00:00:00.0	COMPLETE	129.99	1129.86	0.1150496570311048	225.97	4	3	0.75	4	3
+5	2013-07-25 00:00:00.0	COMPLETE	299.95	1129.86	0.2654753794337628	225.97	3	2	0.5	3	2
+5	2013-07-25 00:00:00.0	COMPLETE	299.98	1129.86	0.26550193031555075	225.97	1	1	0.0	1	1
+5	2013-07-25 00:00:00.0	COMPLETE	299.98	1129.86	0.26550193031555075	225.97	1	1	0.0	2	4
+
+==========================================================================
+
+### hive functions - WINDOW ###
+- LEAD
+- LAG
+- FIRST_VALUE
+- LAST_VALUE
+
+    >     select o.order_id, o.order_date, o.order_status, oi.order_item_subtotal, 
+    >          round(sum(oi.order_item_subtotal) over (partition by o.order_id), 2) as order_revenue,
+    >          oi.order_item_subtotal / round(sum(oi.order_item_subtotal) over (partition by o.order_id), 2) as pct_revenue,
+    >          round(avg(oi.order_item_subtotal) over (partition by o.order_id), 2) as avg_revenue,
+    >          rank() over (partition by o.order_id order by oi.order_item_subtotal desc) rank_revenue,
+    >          dense_rank() over (partition by o.order_id order by oi.order_item_subtotal desc) dense_rank_revenue,
+    >          percent_rank() over (partition by o.order_id order by oi.order_item_subtotal desc) pct_rank_revenue,
+    >          row_number() over (partition by o.order_id order by oi.order_item_subtotal desc) rn_orderby_revenue,
+    >          row_number() over (partition by o.order_id) rn_revenue,
+    >          lead(oi.order_item_subtotal) over (partition by o.order_id order by oi.order_item_subtotal desc) as lead_order_item_subtotal,
+    >          lag(oi.order_item_subtotal) over (partition by o.order_id order by oi.order_item_subtotal desc) as lag_order_item_subtotal,
+    >          first_value(oi.order_item_subtotal) over (partition by o.order_id order by oi.order_item_subtotal desc) as first_order_item_subtotal,
+    >          last_value(oi.order_item_subtotal) over (partition by o.order_id order by oi.order_item_subtotal desc) as last_order_item_subtotal
+    >          from orders_hive o join order_items_hive oi
+    >          on o.order_id = oi.order_item_order_id
+    >          where o.order_status in ('COMPLETE', 'CLOSED')) nest
+    >          where order_revenue >= 1000
+    >          order by nest.order_date, nest.order_revenue, nest.rank_revenue desc
+    >          limit 20;
+57782	2013-07-25 00:00:00.0	CLOSED	199.98	1049.85	0.19048435083825221	262.46	4	4	1.0	4	2	NULL	199.99	399.98	199.98
+57782	2013-07-25 00:00:00.0	CLOSED	199.99	1049.85	0.1904938853104387	262.46	3	3	0.6666666666666666	3	4	199.98	249.9	399.98	199.99
+57782	2013-07-25 00:00:00.0	CLOSED	249.9	1049.85	0.2380339990441343	262.46	2	2	0.3333333333333333	2	3	199.99	399.98	399.98	249.9
+57782	2013-07-25 00:00:00.0	CLOSED	399.98	1049.85	0.3809877706208774	262.46	1	1	0.0	1	1	249.9	NULL	399.98	399.98
+57757	2013-07-25 00:00:00.0	COMPLETE	119.98	1099.87	0.10908562226166148	219.97	5	5	1.0	5	4	NULL	129.99	499.95	119.98
+57757	2013-07-25 00:00:00.0	COMPLETE	129.99	1099.87	0.11818669978557836	219.97	4	4	0.75	4	3	119.98	150.0	499.95	129.99
+57757	2013-07-25 00:00:00.0	COMPLETE	150.0	1099.87	0.13637975397092386	219.97	3	3	0.5	3	1	129.99	199.95	499.95	150.0
+57757	2013-07-25 00:00:00.0	COMPLETE	199.95	1099.87	0.1817942092685883	219.97	2	2	0.25	2	2	150.0	499.95	499.95	199.95
+57757	2013-07-25 00:00:00.0	COMPLETE	499.95	1099.87	0.454553731083702	219.97	1	1	0.0	1	5	199.95	NULL	499.95	499.95
+57788	2013-07-25 00:00:00.0	COMPLETE	49.98	1119.86	0.044630578413584136	223.97	5	5	1.0	5	3	NULL	129.99	499.95	49.98
+57788	2013-07-25 00:00:00.0	COMPLETE	129.99	1119.86	0.11607701453142721	223.97	4	4	0.75	4	1	49.98	199.98	499.95	129.99
+57788	2013-07-25 00:00:00.0	COMPLETE	199.98	1119.86	0.1785758896000742	223.97	3	3	0.5	3	2	129.99	239.96	499.95	199.98
+57788	2013-07-25 00:00:00.0	COMPLETE	239.96	1119.86	0.21427679059334845	223.97	2	2	0.25	2	5	199.98	499.95	499.95	239.96
+57788	2013-07-25 00:00:00.0	COMPLETE	499.95	1119.86	0.4464397444386185	223.97	1	1	0.0	1	4	239.96	NULL	499.95	499.95
+5	2013-07-25 00:00:00.0	COMPLETE	99.96	1129.86	0.08847113720679789	225.97	5	4	1.0	5	5	NULL	129.99	299.98	99.96
+5	2013-07-25 00:00:00.0	COMPLETE	129.99	1129.86	0.1150496570311048	225.97	4	3	0.75	4	3	99.96	299.95	299.98	129.99
+5	2013-07-25 00:00:00.0	COMPLETE	299.95	1129.86	0.2654753794337628	225.97	3	2	0.5	3	2	129.99	299.98	299.98	299.95
+5	2013-07-25 00:00:00.0	COMPLETE	299.98	1129.86	0.26550193031555075	225.97	1	1	0.0	1	1	299.98	NULL	299.98	299.98
+5	2013-07-25 00:00:00.0	COMPLETE	299.98	1129.86	0.26550193031555075	225.97	1	1	0.0	2	4	299.95	299.98	299.98	299.98
+
+=========================================================================
+
+### spark sql - DATAFRAME/TEMP TABLE ###
+
+# problem statement:
+- get daily revenue by product considering completed and closed orders
+	- products have to be read from local fs ... create dataframe
+	- join orders, order_items
+	- filter on order_status
+- data needs to be sorted asc by date and desc by revenue computed for each product for each day
+	- sort data by order_date asc
+	- sort daily revenue per product desc
+- save data back to hdfs
+
+--view hive table as dataframe
+[cloudera@quickstart ~]$ pyspark --master yarn --num-executors 1 --executor-memory 2G
+>>> sqlContext.sql("select * from demos_retail_db_orc.orders_hive_orc")
+DataFrame[order_id: int, order_date: string, order_customer_id: int, order_status: string]
+>>> sqlContext.sql("select * from demos_retail_db_orc.orders_hive_orc").show()
++--------+--------------------+-----------------+---------------+
+|order_id|          order_date|order_customer_id|   order_status|
++--------+--------------------+-----------------+---------------+
+|       1|2013-07-25 00:00:...|            11599|         CLOSED|
+|       2|2013-07-25 00:00:...|              256|PENDING_PAYMENT|
+|       3|2013-07-25 00:00:...|            12111|       COMPLETE|
+|       4|2013-07-25 00:00:...|             8827|         CLOSED|
+|       5|2013-07-25 00:00:...|            11318|       COMPLETE|
+>>> sqlContext.sql("select * from demos_retail_db_orc.orders_hive_orc").printSchema()
+root
+ |-- order_id: integer (nullable = true)
+ |-- order_date: string (nullable = true)
+ |-- order_customer_id: integer (nullable = true)
+ |-- order_status: string (nullable = true)
+
+---read from hdfs text file and then convert rdd into df
+>>> from pyspark import Row
+>>> sc.textFile("/user/cloudera/retail_db/orders")
+>>> ordersRDD = sc.textFile("/user/cloudera/retail_db/orders")
+>>> for i in ordersRDD.take(5): print(i)
+... 
+1,2013-07-25 00:00:00.0,11599,CLOSED
+2,2013-07-25 00:00:00.0,256,PENDING_PAYMENT
+3,2013-07-25 00:00:00.0,12111,COMPLETE
+4,2013-07-25 00:00:00.0,8827,CLOSED
+5,2013-07-25 00:00:00.0,11318,COMPLETE
+
+--RDD is distributed collection (no schema/column structure) as type string here
+>>> type(ordersRDD)
+<class 'pyspark.rdd.RDD'>
+
+>>> ordersDF = ordersRDD.map(lambda o: Row(order_id=int(o.split(",")[0]),\
+... order_date=o.split(",")[1],\
+... order_customer_id=int(o.split(",")[2]),\
+... order_status=o.split(",")[3])).toDF()
+>>> ordersDF.printSchema()
+root
+ |-- order_customer_id: long (nullable = true)
+ |-- order_date: string (nullable = true)
+ |-- order_id: long (nullable = true)
+ |-- order_status: string (nullable = true)
+
+>>> ordersDF.show()
++-----------------+--------------------+--------+---------------+
+|order_customer_id|          order_date|order_id|   order_status|
++-----------------+--------------------+--------+---------------+
+|            11599|2013-07-25 00:00:...|       1|         CLOSED|
+|              256|2013-07-25 00:00:...|       2|PENDING_PAYMENT|
+|            12111|2013-07-25 00:00:...|       3|       COMPLETE|
+|             8827|2013-07-25 00:00:...|       4|         CLOSED|
+|            11318|2013-07-25 00:00:...|       5|       COMPLETE|
+
+--register temp table
+>>> ordersDF.registerTempTable("ordersDF_table")
+>>> sqlContext.sql("select order_status, count(*) as count from ordersDF_table group by order_status").show()
++---------------+-----+                                                         
+|   order_status|count|
++---------------+-----+
+|        PENDING| 7610|
+|        ON_HOLD| 3798|
+| PAYMENT_REVIEW|  729|
+|PENDING_PAYMENT|15030|
+|     PROCESSING| 8275|
+|         CLOSED| 7556|
+|       COMPLETE|22899|
+|       CANCELED| 1428|
+|SUSPECTED_FRAUD| 1558|
++---------------+-----+
+
+--get products data from local fs / convert to RDD / register as temp table
+>>> productsRaw = open("/home/cloudera/data-master/retail_db/products/part-00000").read().splitlines()
+>>> type(productsRaw)
+<type 'list'>
+>>> productsRDD = sc.parallelize(productsRaw)
+>>> for i in productsRDD.take(5): print(i)
+... 
+1,2,Quest Q64 10 FT. x 10 FT. Slant Leg Instant U,,59.98,http://images.acmesports.sports/Quest+Q64+10+FT.+x+10+FT.+Slant+Leg+Instant+Up+Canopy
+2,2,Under Armour Men's Highlight MC Football Clea,,129.99,http://images.acmesports.sports/Under+Armour+Men%27s+Highlight+MC+Football+Cleat
+3,2,Under Armour Men's Renegade D Mid Football Cl,,89.99,http://images.acmesports.sports/Under+Armour+Men%27s+Renegade+D+Mid+Football+Cleat
+4,2,Under Armour Men's Renegade D Mid Football Cl,,89.99,http://images.acmesports.sports/Under+Armour+Men%27s+Renegade+D+Mid+Football+Cleat
+5,2,Riddell Youth Revolution Speed Custom Footbal,,199.99,http://images.acmesports.sports/Riddell+Youth+Revolution+Speed+Custom+Football+Helmet
+
+>>> from pyspark import Row
+>>> productsDF = productsRDD.\
+... map(lambda p: Row(product_id = int(p.split(",")[0]),\
+... product_name=p.split(",")[2])).\
+... toDF()
+>>> productsDF.printSchema()
+root
+ |-- product_id: long (nullable = true)
+ |-- product_name: string (nullable = true)
+
+>>> productsDF.show()
++----------+--------------------+
+|product_id|        product_name|
++----------+--------------------+
+|         1|Quest Q64 10 FT. ...|
+|         2|Under Armour Men'...|
+|         3|Under Armour Men'...|
+|         4|Under Armour Men'...|
+|         5|Riddell Youth Rev...|
+>>> productsDF.registerTempTable("products_table")
+>>> sqlContext.sql("select * from products_table")
+DataFrame[product_id: bigint, product_name: string]
+>>> sqlContext.sql("select * from products_table").show()
++----------+--------------------+
+|product_id|        product_name|
++----------+--------------------+
+|         1|Quest Q64 10 FT. ...|
+|         2|Under Armour Men'...|
+|         3|Under Armour Men'...|
+|         4|Under Armour Men'...|
+|         5|Riddell Youth Rev...|
+
+=============================================================
+
+### spark sql - JOIN temp tables ###
+
+>>> sqlContext.sql("show tables").show()
++--------------+-----------+
+|     tableName|isTemporary|
++--------------+-----------+
+|ordersdf_table|       true|
+|products_table|       true|
++--------------+-----------+
+>>> sqlContext.sql("use demos_retail_db")
+DataFrame[result: string]
+>>> sqlContext.sql("show tables").show()
++----------------+-----------+
+|       tableName|isTemporary|
++----------------+-----------+
+|  ordersdf_table|       true|
+|  products_table|       true|
+|        customer|      false|
+|order_items_hive|      false|
+|     orders_hive|      false|
++----------------+-----------+
+
+>>> sqlContext.setConf("spark.sql.shuffle.partitions", "2")
+
+>>> sqlContext.sql("select o.order_date, p.product_name, round(sum(oi.order_item_subtotal),2) as daily_revenue_per_product \
+... from orders_hive o join order_items_hive oi \
+... on o.order_id = oi.order_item_order_id \
+... join products_table p \
+... on p.product_id = oi.order_item_product_id \
+... where o.order_status in ('COMPLETE', 'CLOSED') \
+... group by o.order_date, p.product_name \
+... order by o.order_date, daily_revenue_per_product desc").show()
++--------------------+--------------------+-------------------------+           
+|          order_date|        product_name|daily_revenue_per_product|
++--------------------+--------------------+-------------------------+
+|2013-07-25 00:00:...|Field & Stream Sp...|                  5599.72|
+|2013-07-25 00:00:...|Nike Men's Free 5...|                  5099.49|
+|2013-07-25 00:00:...|Diamondback Women...|                   4499.7|
+|2013-07-25 00:00:...|Perfect Fitness P...|                  3359.44|
+|2013-07-25 00:00:...|Pelican Sunstream...|                  2999.85|
+
+=========================================================================
+
+### spark sql - WRITE TABLE TO HIVE ###
+>>> sqlContext.sql("create database cloudera_daily_revenue")
+DataFrame[result: string]
+>>> sqlContext.sql("create table cloudera_daily_revenue.daily_revenue (order_date string, product_name string, daily_revenue_per_product float) stored as orc")
+
+>>> daily_revenue_per_product_df = sqlContext.sql("select o.order_date, p.product_name, round(sum(oi.order_item_subtotal),2) as daily_revenue_per_product \
+... from orders_hive o join order_items_hive oi \
+... on o.order_id = oi.order_item_order_id \
+... join products_table p \
+... on p.product_id = oi.order_item_product_id \
+... where o.order_status in ('COMPLETE', 'CLOSED') \
+... group by o.order_date, p.product_name \
+... order by o.order_date, daily_revenue_per_product desc")
+
+>>> sqlContext.sql("select * from cloudera_daily_revenue.daily_revenue").printSchema()
+root
+ |-- order_date: string (nullable = true)
+ |-- product_name: string (nullable = true)
+ |-- daily_revenue_per_product: float (nullable = true)
+
+>>> daily_revenue_per_product_df.insertInto("cloudera_daily_revenue.daily_revenue")
+/usr/lib/spark/python/pyspark/sql/dataframe.py:150: UserWarning: insertInto is deprecated. Use write.insertInto() instead.
+  warnings.warn("insertInto is deprecated. Use write.insertInto() instead.")
+
+>>> sqlContext.sql("select * from cloudera_daily_revenue.daily_revenue").show()
++--------------------+--------------------+-------------------------+
+|          order_date|        product_name|daily_revenue_per_product|
++--------------------+--------------------+-------------------------+
+|2013-07-25 00:00:...|Field & Stream Sp...|                  5599.72|
+|2013-07-25 00:00:...|Nike Men's Free 5...|                  5099.49|
+|2013-07-25 00:00:...|Diamondback Women...|                   4499.7|
+|2013-07-25 00:00:...|Perfect Fitness P...|                  3359.44|
+|2013-07-25 00:00:...|Pelican Sunstream...|                  2999.85|
+
+=========================================================================
+
+### spark - DATAFRAME OPERATIONS ###
+- SAVE/WRITE
+- SHOW
+- SELECT
+- FILTER
+- JOIN
+
+--write/saving data
+>>> daily_revenue_per_product_df.save("/user/cloudera/demos/json_demo", "json")
+/usr/lib/spark/python/pyspark/sql/dataframe.py:167: UserWarning: insertInto is deprecated. Use write.save() instead.
+  warnings.warn("insertInto is deprecated. Use write.save() instead.")
+>>> daily_revenue_per_product_df.write.json("/user/cloudera/demos/json_demo_write")
+
+>>> daily_revenue_per_product_df.select("order_date", "daily_revenue_per_product").show()
++--------------------+-------------------------+                                
+|          order_date|daily_revenue_per_product|
++--------------------+-------------------------+
+|2013-07-25 00:00:...|                  5599.72|
+|2013-07-25 00:00:...|                  5099.49|
+|2013-07-25 00:00:...|                   4499.7|
+|2013-07-25 00:00:...|                  3359.44|
+|2013-07-25 00:00:...|                  2999.85|
+
+>>> daily_revenue_per_product_df.filter(daily_revenue_per_product_df["order_date"] == "2013-07-26 00:00:00.0").show()
++--------------------+--------------------+-------------------------+           
+|          order_date|        product_name|daily_revenue_per_product|
++--------------------+--------------------+-------------------------+
+|2013-07-26 00:00:...|Field & Stream Sp...|                 10799.46|
+|2013-07-26 00:00:...|Perfect Fitness P...|                  7978.67|
+|2013-07-26 00:00:...|Diamondback Women...|                  6899.54|
+|2013-07-26 00:00:...|Nike Men's Free 5...|                  6799.32|
+|2013-07-26 00:00:...|O'Brien Men's Neo...|                  4798.08|
+
+===============================================================================
+
+### Streaming Analytics - FLume, Kafka, Spark Streaming ###
+
+objectives:
+- getting started with flume
+- ingesting data to hdfs with flume
+- getting started with kafka
+- integration with flume and spark streaming
+- integration with flume and kafka
+- integration with kafka and spark streaming
+
+============================================================================
+
+### flume - documentation and example ###
+
+web server ---> [ agent (source -> channel -> sink) ] ---> hdfs
+[
+cloudera@quickstart ~]$ pwd
+/home/cloudera
+[cloudera@quickstart ~]$ mkdir flume_demo
+[cloudera@quickstart ~]$ cd flume_demo/
+[cloudera@quickstart flume_demo]$ vim example.conf
+
+# example.conf: A single-node Flume configuration
+
+# Name the components on this agent (a1 is agent name configured with 1 source[r1 name], 1 sink[k1 name], and 1 channel[c1 name])
+a1.sources = r1
+a1.sinks = k1
+a1.channels = c1
+
+# Describe/configure the source (type netcat is web service similator running on localhost with port 44444)
+a1.sources.r1.type = netcat
+a1.sources.r1.bind = localhost
+a1.sources.r1.port = 44444
+
+# Describe the sink (type logger logs and prints messages on source netcat web service)
+a1.sinks.k1.type = logger
+
+# Use a channel which buffers events in memory
+a1.channels.c1.type = memory
+a1.channels.c1.capacity = 1000
+a1.channels.c1.transactionCapacity = 100
+
+# Bind the source and sink to the channel (integrate source and sink with channel)
+a1.sources.r1.channels = c1
+a1.sinks.k1.channel = c1
+
+[cloudera@quickstart flume_demo]$ flume-ng
+Usage: /usr/lib/flume-ng/bin/flume-ng <command> [options]...
+
+commands:
+  help                      display this help text
+  agent                     run a Flume agent
+  avro-client               run an avro Flume client
+  version                   show Flume version info
+
+global options:
+  --conf,-c <conf>          use configs in <conf> directory
+  --classpath,-C <cp>       append to the classpath
+  --dryrun,-d               do not actually start Flume, just print the command
+  --plugins-path <dirs>     colon-separated list of plugins.d directories. See the
+                            plugins.d section in the user guide for more details.
+                            Default: $FLUME_HOME/plugins.d
+  -Dproperty=value          sets a Java system property value
+  -Xproperty=value          sets a Java -X option
+
+agent options:
+  --name,-n <name>          the name of this agent (required)
+  --conf-file,-f <file>     specify a config file (required if -z missing)
+  --zkConnString,-z <str>   specify the ZooKeeper connection to use (required if -f missing)
+  --zkBasePath,-p <path>    specify the base path in ZooKeeper for agent configs
+  --no-reload-conf          do not reload config file if changed
+  --help,-h                 display help text
+
+avro-client options:
+  --rpcProps,-P <file>   RPC client properties file with server connection params
+  --host,-H <host>       hostname to which events will be sent
+  --port,-p <port>       port of the avro source
+  --dirname <dir>        directory to stream to avro source
+  --filename,-F <file>   text file to stream to avro source (default: std input)
+  --headerFile,-R <file> File containing event headers as key/value pairs on each new line
+  --help,-h              display help text
+
+  Either --rpcProps or both --host and --port must be specified.
+
+Note that if <conf> directory is specified, then it is always included first
+in the classpath.
+
+--start agent
+[cloudera@quickstart flume_demo]$ flume-ng agent --name a1 --conf-file /home/cloudera/flume_demo/example.conf
+...
+18/03/18 16:06:07 INFO node.Application: Starting Channel c1
+18/03/18 16:06:08 INFO instrumentation.MonitoredCounterGroup: Monitored counter group for type: CHANNEL, name: c1: Successfully registered new MBean.
+18/03/18 16:06:08 INFO instrumentation.MonitoredCounterGroup: Component type: CHANNEL, name: c1 started
+18/03/18 16:06:08 INFO node.Application: Starting Sink k1
+18/03/18 16:06:08 INFO node.Application: Starting Source r1
+18/03/18 16:06:08 INFO source.NetcatSource: Source starting
+18/03/18 16:06:08 INFO source.NetcatSource: Created serverSocket:sun.nio.ch.ServerSocketChannelImpl[/127.0.0.1:44444]
+
+--install telnet if not available
+[cloudera@quickstart ~]$ sudo yum install telnet
+
+--connect to web server via new terminal
+[cloudera@quickstart ~]$ telnet localhost 44444
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+Hello World
+OK
+How are you
+OK
+
+--view incoming messages from flume conf
+18/03/18 16:11:42 INFO sink.LoggerSink: Event: { headers:{} body: 48 65 6C 6C 6F 20 57 6F 72 6C 64 0D             Hello World. }
+18/03/18 16:11:51 INFO sink.LoggerSink: Event: { headers:{} body: 48 6F 77 20 61 72 65 20 79 6F 75 0D             How are you. }
+
+====================================================================
+
+### flume - components ###
+
+main sources:
+- avro
+- thrift
+- exec
+- jms
+- spool
+- kafka
+- syslog
+- http
+- stress
+- legacy
+
+main sinks:
+- hdfs
+- hive
+- logger
+- avro
+- thrift
+- hbase
+- morphline solr
+- elastic search
+- kafka
+
+main channels:
+- memory
+- jdbc
+- kafka
+- file
+
+====================================================================
+
+### flume - setting up data / start log stream ###
+
+# get data from web server logs to hdfs
+source - exec
+sink - hdfs
+channel - memory
+
+--view static logs
+[cloudera@quickstart ~]$ cd /opt/gen_logs
+[cloudera@quickstart gen_logs]$ ls
+data  lib  logs  start_logs.sh  stop_logs.sh  tail_logs.sh
+[cloudera@quickstart gen_logs]$ cd logs
+[cloudera@quickstart gen_logs]$ tail -F /opt/gen_logs/logs/access.log
+192.87.175.186 - - [01/Aug/2014:11:51:44 -0400] "GET /departments HTTP/1.1" 503 1572 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.153 Safari/537.36"
+195.231.2.207 - - [01/Aug/2014:11:51:45 -0400] "GET /department/fitness/products HTTP/1.1" 200 515 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:30.0) Gecko/20100101 Firefox/30.0"
+65.62.183.244 - - [01/Aug/2014:11:51:46 -0400] "GET /departments HTTP/1.1" 200 756 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.153 Safari/537.36"
+89.92.128.155 - - [01/Aug/2014:11:51:47 -0400] "GET /departments HTTP/1.1" 200 1226 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_4) AppleWebKit/537.77.4 (KHTML, like Gecko) Version/7.0.5 Safari/537.77.4"
+30.100.199.8 - - [01/Aug/2014:11:51:48 -0400] "GET /departments HTTP/1.1" 200 768 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_4) AppleWebKit/537.77.4 (KHTML, like Gecko) Version/7.0.5 Safari/537.77.4"
+
+--start generating streaming logs
+[cloudera@quickstart gen_logs]$ ./start_logs.sh
+--view streaming logs
+[cloudera@quickstart gen_logs]$ ./tail_logs.sh 
+223.202.2.80 - - [18/Mar/2018:18:44:50 -0800] "GET /categories/soccer/products HTTP/1.1" 200 705 "-" "Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.153 Safari/537.36"
+38.51.23.237 - - [18/Mar/2018:18:44:51 -0800] "GET /departments HTTP/1.1" 200 656 "-" "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.153 Safari/537.36"
+87.182.130.147 - - [18/Mar/2018:18:44:52 -0800] "GET /product/387 HTTP/1.1" 200 1421 "-" "Mozilla/5.0 (Windows NT 6.3; WOW64; rv:30.0) Gecko/20100101 Firefox/30.0"
+113.186.157.91 - - [18/Mar/2018:18:44:53 -0800] "GET /product/1322 HTTP/1.1" 200 1078 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_4) AppleWebKit/537.77.4 (KHTML, like Gecko) Version/7.0.5 Safari/537.77.4"
+
+==========================================================================
+
+### flume - define source ###
+
+[cloudera@quickstart /]$ cd ~/flume_demo/
+[cloudera@quickstart flume_demo]$ ls
+example.conf
+[cloudera@quickstart flume_demo]$ mkdir wslogs_to_hdfs
+[cloudera@quickstart flume_demo]$ cd wslogs_to_hdfs/
+[cloudera@quickstart wslogs_to_hdfs]$ mv /home/cloudera/flume_demo/example.conf wshdfs.conf
+[cloudera@quickstart wslogs_to_hdfs]$ vim wshdfs.conf 
+
+--replace via vim
+:%s/a1/wh
+:%s/r1/ws
+:%s/c1/mem
+:%s/netcat/exec
+# example.conf: A single-node Flume configuration
+
+# Name the components on this agent (wh is agent name configured with 1 source[ws name], 1 sink[k1 name], and 1 channel[mem name])
+wh.sources = ws
+wh.sinks = k1
+wh.channels = mem
+
+# Describe/configure the source (type exec)
+wh.sources.ws.type  = exec
+wh.sources.ws.command = tail -F /opt/gen_logs/logs/access.log
+
+# Describe the sink (type logger logs and prints messages on source exec web service)
+wh.sinks.k1.type = logger
+
+# Use a channel which buffers events in memory
+wh.channels.mem.type = memory
+wh.channels.mem.capacity = 1000
+wh.channels.mem.transactionCapacity = 100
+
+# Bind the source and sink to the channel (integrate source and sink with channel)
+wh.sources.ws.channels = mem
+wh.sinks.k1.channel = mem
+
+--start agent
+[cloudera@quickstart wslogs_to_hdfs]$ flume-ng agent -name wh -conf-file /home/cloudera/flume_demo/wslogs_to_hdfs/wshdfs.conf  
+--see sreaming data
+18/03/18 19:04:36 INFO sink.LoggerSink: Event: { headers:{} body: 39 2E 31 30 33 2E 32 32 39 2E 32 35 32 20 2D 20 9.103.229.252 -  }
+18/03/18 19:04:36 INFO sink.LoggerSink: Event: { headers:{} body: 31 32 39 2E 31 38 30 2E 31 35 39 2E 31 31 33 20 129.180.159.113  }
+18/03/18 19:04:36 INFO sink.LoggerSink: Event: { headers:{} body: 31 35 37 2E 31 34 34 2E 31 32 37 2E 36 39 20 2D 157.144.127.69 - }
+18/03/18 19:04:36 INFO sink.LoggerSink: Event: { headers:{} body: 31 30 33 2E 31 35 33 2E 32 33 30 2E 32 32 37 20 103.153.230.227  }
+18/03/18 19:04:36 INFO sink.LoggerSink: Event: { headers:{} body: 32 31 37 2E 31 30 34 2E 31 2E 31 36 38 20 2D 20 217.104.1.168 -  }
+
+===================================================================
+
+### flume - sink ###
+
+[cloudera@quickstart ~]$ hadoop fs -mkdir /user/cloudera/flume_demo
+
+--change sink to hdfs
+
+edit via vim / change sink name / set hdfs path (host from core-site.xml)
+%s/k1/hd
+
+# example.conf: A single-node Flume configuration
+
+# Name the components on this agent (wh is agent name configured with 1 source[ws name], 1 sink[hdfs name], and 1 channel[mem name])
+wh.sources = ws
+wh.sinks = hd
+wh.channels = mem
+
+# Describe/configure the source (type exec)
+wh.sources.ws.type  = exec
+wh.sources.ws.command = tail -F /opt/gen_logs/logs/access.log
+
+# Describe the sink (type logger logs and prints messages on source exec web service)
+wh.sinks.hd.type = hdfs
+wh.sinks.hd.hdfs.path = hdfs://quickstart.cloudera:8020/user/cloudera/flume_demo
+
+# Use a channel which buffers events in memory
+wh.channels.mem.type = memory
+wh.channels.mem.capacity = 1000
+wh.channels.mem.transactionCapacity = 100
+
+# Bind the source and sink to the channel (integrate source and sink with channel)
+wh.sources.ws.channels = mem
+wh.sinks.hd.channel = mem
+
+--launch flume agent to write data to hdfs
+[cloudera@quickstart flume_demo]$ flume-ng agent -name wh -conf-file /home/cloudera/flume_demo/wslogs_to_hdfs/wshdfs.conf 
+
+--view streaming data in hdfs
+[cloudera@quickstart ~]$ hdfs dfs -ls /user/cloudera/flume_demo
+-rw-r--r--   1 cloudera cloudera       1420 2018-03-25 18:41 /user/cloudera/flume_demo/FlumeData.1522028481656
+-rw-r--r--   1 cloudera cloudera       1384 2018-03-25 18:41 /user/cloudera/flume_demo/FlumeData.1522028481657
+-rw-r--r--   1 cloudera cloudera       1295 2018-03-25 18:41 /user/cloudera/flume_demo/FlumeData.1522028481658
+
+[cloudera@quickstart ~]$ hadoop fs -cat /user/cloudera/flume_demo/FlumeData.1522028481656
+
+======================================================================
+
+### flume - customize hdfs sink with more hdfs parameters ###
+
+hdfs.filePrefix	FlumeData	Name prefixed to files created by Flume in hdfs directory
+
+hdfs.fileSuffix	–	Suffix to append to file (eg .avro - NOTE: period is not automatically added)
+
+hdfs.rollInterval	30	Number of seconds to wait before rolling current file (0 = never roll based on time interval)
+
+hdfs.rollSize	1024	File size to trigger roll, in bytes (0: never roll based on file size)
+
+hdfs.rollCount	10	Number of events written to file before it rolled (0 = never roll based on number of events)
+
+hdfs.fileType	SequenceFile	File format: currently SequenceFile, DataStream or CompressedStream (1)DataStream will not compress output file and please don’t set codeC (2)CompressedStream requires set hdfs.codeC with an available codeC
+
+--add to conf file
+wh.sinks.hd.hdfs.filePrefix = FlumeDemo
+wh.sinks.hd.hdfs.fileSuffix = .txt
+wh.sinks.hd.hdfs.rollInterval = 120
+wh.sinks.hd.hdfs.rollSize = 1048576
+wh.sinks.hd.hdfs.rollCount = 100
+wh.sinks.hd.hdfs.fileType = DataStream
+
+--start agent
+[cloudera@quickstart ~]$ flume-ng agent -name wh -conf-file /home/cloudera/flume_demo/wslogs_to_hdfs/wshdfs.conf
+
+--view customized data
+[cloudera@quickstart ~]$ hdfs dfs -ls /user/cloudera/flume_demo
+-rw-r--r--   1 cloudera cloudera      20247 2018-03-25 18:58 /user/cloudera/flume_demo/FlumeDemo.1522029423515.txt
+
+[cloudera@quickstart ~]$ hadoop fs -cat /user/cloudera/flume_demo/FlumeDemo.1522029423515.txt
+212.131.204.83 - - [25/Mar/2018:18:56:49 -0800] "GET /departments HTTP/1.1" 200 1777 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.153 Safari/537.36"
+205.130.178.57 - - [25/Mar/2018:18:56:50 -0800] "GET /add_to_cart/207 HTTP/1.1" 200 638 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.153 Safari/537.36"
+149.191.253.38 - - [25/Mar/2018:18:56:51 -0800] "GET /login HTTP/1.1" 200 640 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.153 Safari/537.36"
+
+--check to confirm rollCount is 100
+[cloudera@quickstart ~]$ hadoop fs -cat /user/cloudera/flume_demo/FlumeDemo.1522029423515.txt | wc -l
+100
+
+==========================================================================
+
+### flume - memory channel ###
+
+The events are stored in an in-memory queue with configurable max size. It’s ideal for flows that need higher throughput and are prepared to lose the staged data in the event of a agent failures. Required properties are in bold.
+
+Property Name	Default	Description
+type	–		The component type name, needs to be memory
+capacity	100		The maximum number of events stored in the channel
+transactionCapacity	100		The maximum number of events the channel will take from a source or give to a sink per transaction
+
+===========================================================================
+
+### flume - different implementations of agents ###
+- multi agent
+- consolidation
+- multiplexing
+
+============================================================================
+
+### kafka - architecture ###
+
+kafka cluster (brokers):
+- producers
+- consumers
+- connectors
+- stream processors
+
+- creating topics to capture data
+
+===========================================================================
+
+### kafka - setup ###
+
+Installing or Upgrading Kafka from a Parcel
+
+Minimum Required Role: Cluster Administrator (also provided by Full Administrator)
+
+In Cloudera Manager, select Hosts > Parcels.
+
+If you do not see Kafka in the list of parcels, you can add the parcel to the list.
+    Find the parcel for the version of Kafka you want to use on Cloudera Distribution of Apache Kafka Versions.
+    Copy the parcel repository link.
+    On the Cloudera Manager Parcels page, click Configuration.
+    In the field Remote Parcel Repository URLs, click + next to an existing parcel URL to add a new field.
+    Paste the parcel repository link.
+    Save your changes.
+
+On the Cloudera Manager Parcels page, download the Kafka parcel, distribute the parcel to the hosts in your cluster, and then activate the parcel. 
+    See Managing Parcels. 
+    After you activate the Kafka parcel, Cloudera Manager prompts you to restart the cluster. 
+    You do not need to restart the cluster after installing Kafka. Click Close to ignore this prompt.
+    Add the Kafka service to your cluster. See Adding a Service.
+
+A parcel is a binary distribution format containing the program files, along with additional metadata used by Cloudera Manager. 
+The important differences between parcels and packages are:
+
+    Parcels are self-contained and installed in a versioned directory, which means that multiple versions of a given parcel can be installed side-by-side. 
+    You can then designate one of these installed versions as the active one. 
+    With packages, only one package can be installed at a time so there is no distinction between what is installed and what is active.
+    You can install parcels at any location in the filesystem. 
+    
+    They are installed by default in /opt/cloudera/parcels. 
+    In contrast, packages are installed in /usr/lib.
+    
+When you install from the Parcels page, Cloudera Manager automatically downloads, distributes, and activates the correct parcel for the operating system running on each host in the cluster. 
+All CDH hosts that make up a logical cluster need to run on the same major OS release to be covered by Cloudera Support. 
+Cloudera Manager needs to run on the same OS release as one of the CDH clusters it manages, to be covered by Cloudera Support. 
+The risk of issues caused by running different minor OS releases is considered lower than the risk of running different major OS releases. 
+Cloudera recommends running the same minor release cross-cluster, because it simplifies issue tracking and supportability. 
+You can, however, use RHEL/Centos 7.2 as the operating system for gateway hosts. See Operating System Support for Gateway Hosts (CDH 5.11 and higher only).
+
+***cloudera quickstart vm does not use parcels thus must install via package***
+
+https://www.cloudera.com/documentation/kafka/latest/topics/kafka_installing.html#concept_ctb_k1c_d5
+
+# quickstart vm has cloudera kafka repo; navigate to:
+cd /etc/yum.repos.d
+ls
+cloudera-kafka.repo
+$ sudo yum clean all
+$ sudo yum install kafka
+$ sudo yum install kafka-server
+
+Edit /etc/kafka/conf/server.properties to ensure that the broker.id is unique for each node and broker in Kafka cluster, 
+and zookeeper.connect points to same ZooKeeper for all nodes and brokers.
+
+Start the Kafka server with the following command:
+
+$ sudo service kafka-server start
+Starting Kafka Server (kafka-server):                      [  OK  ]
+Starting  (kafka-server): 
+Starting Kafka Server (kafka-server):                      [  OK  ]
+
+$ zookeeper-client
+$ ls /brokers/ids
+[zk: localhost:2181(CONNECTED) 0] ls /brokers/ids
+[0]
+
+You should see all of the IDs for the brokers you have registered in your Kafka cluster.
+To discover to which node a particular ID is assigned, use the following command:
+This command returns the host name of node assigned the ID you specify.
+
+[zk: localhost:2181(CONNECTED) 1] get /brokers/ids/0
+{"listener_security_protocol_map":{"PLAINTEXT":"PLAINTEXT"},"endpoints":["PLAINTEXT://quickstart.cloudera:9092"],"jmx_port":-1,"host":"quickstart.cloudera","timestamp":"1522121118189","port":9092,"version":4}
+cZxid = 0xf83
+ctime = Mon Mar 26 20:25:18 PDT 2018
+mZxid = 0xf83
+mtime = Mon Mar 26 20:25:18 PDT 2018
+pZxid = 0xf83
+cversion = 0
+dataVersion = 0
+aclVersion = 0
+ephemeralOwner = 0x1626565cdc2006f
+dataLength = 208
+numChildren = 0
+
+--set env variables / profile
+[cloudera@quickstart bin]$ export PATH=$PATH:/usr/lib/kafka/bin
+[cloudera@quickstart bin]$ vim ~/.bash_profile
+export KAFKA_HOME=/usr/lib/kafka
+PATH=$PATH:$KAFKA_HOME/bin
+[cloudera@quickstart bin]$ . ~/.bash_profile
+--now can execute from any directory
+[cloudera@quickstart /]$ kafka
+kafka-acls                           kafka-consumer-offset-checker.sh     kafka-run-class.sh
+kafka-acls.sh                        kafka-consumer-perf-test.sh          kafka-sentry
+kafka-broker-api-versions.sh         kafka-mirror-maker.sh                kafka-sentry.sh
+kafka-configs                        kafka-preferred-replica-election     kafka-server-start.sh
+kafka-configs.sh                     kafka-preferred-replica-election.sh  kafka-server-stop.sh
+kafka-console-consumer               kafka-producer-perf-test.sh          kafka-simple-consumer-shell.sh
+kafka-console-consumer.sh            kafka-reassign-partitions            kafka-streams-application-reset.sh
+kafka-console-producer               kafka-reassign-partitions.sh         kafka-topics
+kafka-console-producer.sh            kafka-replay-log-producer.sh         kafka-topics.sh
+kafka-consumer-groups.sh             kafka-replica-verification.sh        kafka-verifiable-consumer.sh
+kafka-consumer-offset-checker        kafka-run-class                      kafka-verifiable-producer.sh
+
+==========================================================================================
+
+### kafka - commands ###
+--include all zookeeper info comma separate with no space
+--include all kafka broker list info comma separate with no space
+
+[cloudera@quickstart ~]$ sudo service kafka-server start
+
+[cloudera@quickstart ~]$ kafka-topics.sh --create \
+ --zookeeper quickstart.cloudera:2181 \
+ --replication-factor 1 \
+ --partitions 1 \
+ --topic kafkademo
+
+[cloudera@quickstart ~]$ kafka-topics.sh --list \
+--zookeeper quickstart.cloudera:2181
+...
+kafkademo
+
+[cloudera@quickstart /]$ kafka-console-producer.sh --broker-list \
+ quickstart.cloudera:9092 \
+ --topic kafkademo
+...
+hello kafka!
+kaffffffkkkkkkkaaaaa :)
+
+[cloudera@quickstart ~]$ kafka-console-consumer.sh \
+--bootstrap-server quickstart.cloudera:9092 \
+--topic kafkademo \
+--from-beginning
+...
+hello kafka!
+kaffffffkkkkkkkaaaaa :)
+
+========================================================================================
+
+### kafka - topic anatomy ###
+
+- topic is nothing but a file which captures streams of messages
+- publishers publish message to the topic
+- consumers subscribe to the topic
+- topics can partitioned (file copy splits) for scalability
+- each topic partition can be cloned for reliability
+- offset -> position of the last message consumer have read from each partition of the topic
+- consumer group can be created to facilitate multiple consumers read from same topic in co-ordinated fashion (offset is tracked at group level)
+
+==================================================================================
+
+### kafka/flume - use cases ###
+
+- life cycle of streaming analytics
+	- get data from source (flume and or kafka)
+	- process data (spark streaming)
+	- store it in target (hdfs)
+- kafka can be used for most of the applications
+	- but existing source applications need to be refactored to publish messages
+    - source applications are mission critical and highly sensitive for any changes
+- in that case, if the messages are already captured in web server logs,
+one can use flume to get messages from logs and publish to Kafka Topic
+
+==================================================================================
+
+### spark streaming - initial start ###
+sparkcontext - read/process/load data at low freq interval
+streamingcontext - read/process/load data at high freq interval
+
+sc.stop()
+
+import org.apache.spark._
+import org.apache.spark.streaming._
+
+// Create a local StreamingContext with two working thread and batch interval of 1 second.
+// The master requires 2 cores to prevent from a starvation scenario.
+
+val conf = new SparkConf().setMaster("yarn-client").setAppName("streaming")
+val ssc = new StreamingContext(conf, Seconds(1))
+
+////////////////////////////////////////////////////
+
+sc.stop()
+
+from pyspark import SparkContext
+from pyspark.streaming import StreamingContext
+
+# Create a local StreamingContext with two working thread and batch interval of 1 second
+sc = SparkContext("yarn-client", "streaming")
+ssc = StreamingContext(sc, 1)
+
+============================================
+
+### spark streaming - setup netcat for streaming demo ###
+--connect to web service on port 9999 / write message
+[cloudera@quickstart ~]$ nc -lk 9999
+hello world
+--read message stream
+[cloudera@quickstart ~]$ nc localhost 9999
+hello world
+
+==========================================
+
+### spark streaming - develop streaming word count ###
+
+from pyspark import SparkContext, SparkConf
+from pyspark.streaming import StreamingContext
+
+conf = SparkConf().\
+setAppName("Streaming word count").\
+setMaster("yarn-client")
+sc = SparkContext(conf=conf)
+
+ssc = StreamingContext(sc, 15)
+
+lines = ssc.socketTextStream("localhost", 9999)
+words = lines.flatMap(lambda line: line.split(" "))
+pairs = words.map(lambda word: (word, 1))
+wordCounts = pairs.reduceByKey(lambda x, y: x + y)
+wordCounts.pprint()
+ssc.start()
+ssc.awaitTermination()
+
+======================================================
+
+### spark streaming - run on the cluster ###
+
+***not working trying on local mac***
+***have to use local[2] ... yarn mode not working on quickstart vm***
+
+local-MBP:~ grp$ spark-submit \
+> /spark-2.2.0-bin-hadoop2.7/examples/src/main/python/streaming/network_wordcount.py localhost 9999
+
+
+local-MBP:~ grp$ nc -lk 9999
+hello world
+
+-------------------------------------------
+Time: 2018-03-29 21:08:28
+-------------------------------------------
+('hello', 1)
+('world', 1)
+
+-------------------------------------------
+Time: 2018-03-29 21:08:29
+-------------------------------------------
+
+-------------------------------------------
+Time: 2018-03-29 21:08:30
+-------------------------------------------
+
+==========================================================
+
+### spark streaming - dstreams ###
+
+- discretized streams (dstreams)
+	- isolated rdds based off time (ex:15 seconds) intervals
+	- program executed on each separate rdd interval
+
+========================================================
+
+### spark streaming - department wise count ###
+
+# problem statement - get department wise traffic every 30 seconds
+- read data from retail_db_logs
+- compute department traffic every 30 seconds, ex: (category, count)
+- save the output to HDFS
+
+# solution
+- use spark streaming
+- publish messages from retail_db_logs to netcat
+- create dstream
+- process and save output
+
+[cloudera@quickstart ~]$ ls -ltr /opt/gen_logs/logs/
+total 16
+-rw-r--r-- 1 cloudera cloudera 13302 Mar 29 19:28 access.log
+[cloudera@quickstart ~]$ cd /opt/gen_logs/
+[cloudera@quickstart gen_logs]$ ls -ltr
+total 24
+-rwxr-xr-x 1 cloudera cloudera   51 Aug  1  2014 tail_logs.sh
+drwxr-xr-x 2 cloudera cloudera 4096 Sep 25  2014 logs
+drwxr-xr-x 2 cloudera cloudera 4096 Sep 25  2014 data
+-rwxr-xr-x 1 cloudera cloudera   76 Oct  8  2014 start_logs.sh
+-rwxr-xr-x 1 cloudera cloudera  131 May 14  2015 stop_logs.sh
+drwxr-xr-x 2 cloudera cloudera 4096 Jul 19  2017 lib
+[cloudera@quickstart gen_logs]$ ./start_logs.sh 
+[cloudera@quickstart gen_logs]$ ./tail_logs.sh 
+41.235.106.152 - - [29/Mar/2018:19:29:03 -0800] "GET /departments HTTP/1.1" 503 2084 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.9; rv:30.0) Gecko/20100101 Firefox/30.0"
+164.106.131.123 - - [29/Mar/2018:19:28:55 -0800] "GET /departments HTTP/1.1" 200 1084 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.153 Safari/537.36"
+187.47.69.37 - - [29/Mar/2018:19:28:56 -0800] "GET /product/816 HTTP/1.1" 200 1482 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.125 Safari/537.36"
+
+--sample of extracting department data process
+[cloudera@quickstart gen_logs]$ python
+Python 2.6.6 (r266:84292, Jul 23 2015, 15:22:56) 
+[GCC 4.4.7 20120313 (Red Hat 4.4.7-11)] on linux2
+Type "help", "copyright", "credits" or "license" for more information.
+>>> msg = '90.16.98.69 - - [30/Mar/2018:19:26:14 -0800] "GET /department/golf/products HTTP/1.1" 200 449 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.125 Safari/537.36"'
+>>> msg.split(" ")
+['90.16.98.69', '-', '-', '[30/Mar/2018:19:26:14', '-0800]', '"GET', '/department/golf/products', 'HTTP/1.1"', '200', '449', '"-"', '"Mozilla/5.0', '(Macintosh;', 'Intel', 'Mac', 'OS', 'X', '10_9_4)', 'AppleWebKit/537.36', '(KHTML,', 'like', 'Gecko)', 'Chrome/36.0.1985.125', 'Safari/537.36"']
+>>> msg.split(" ")[6].split("/")
+['', 'department', 'golf', 'products']
+>>> msg.split(" ")[6].split("/")[1] == "department"
+True
+>>> msg.split(" ")[6].split("/")[2]
+'golf'
+
+--spark streaming script
+from pyspark import SparkConf, SparkContext
+from pyspark.streaming import StreamingContext
+
+import sys
+
+hostname = sys.argv[1]
+port = int(sys.argv[2])
+
+conf = SparkConf().\
+setAppName("Streaming Department Count").\
+setMaster("local[2]") #yarn mode not working on quickstart vm
+
+sc = SparkContext(conf=conf)
+ssc = StreamingContext(sc, 30)
+
+messages = ssc.socketTextStream(hostname, port)
+
+departmentMessages = messages.\
+filter(lambda msg: msg.split(" ")[6].split("/")[1] == "department")
+
+departmentNames = departmentMessages.\
+map(lambda msg: (msg.split(" ")[6].split("/")[2], 1))
+
+from operator import add
+
+departmentCount = departmentNames.\
+reduceByKey(add)
+
+outputPrefix = sys.argv[3]
+departmentCount.saveAsTextFiles(outputPrefix)
+
+ssc.start()
+ssc.awaitTermination()
+
+--create web service to read tail web logs
+[root@quickstart gen_logs]# ./tail_logs.sh | nc -lk quickstart.cloudera 19999
+
+--run stream
+[cloudera@quickstart ~]$ spark-submit --master local[2] \
+> src/main/python/StreamingDepartmentCount.py quickstart.cloudera 19999 \
+> /user/cloudera/streamingdeptcountpython/cnt
+
+- data will be written to hdfs every 30 seconds
+- output:
+[cloudera@quickstart /]$ hadoop fs -ls /user/cloudera/streamingdeptcountpython/cnt-1522540260000
+Found 3 items
+-rw-r--r--   1 cloudera cloudera          0 2018-03-31 16:51 /user/cloudera/streamingdeptcountpython/cnt-1522540260000/_SUCCESS
+-rw-r--r--   1 cloudera cloudera         70 2018-03-31 16:51 /user/cloudera/streamingdeptcountpython/cnt-1522540260000/part-00000
+-rw-r--r--   1 cloudera cloudera         50 2018-03-31 16:51 /user/cloudera/streamingdeptcountpython/cnt-1522540260000/part-00001
+[cloudera@quickstart /]$ hadoop fs -cat /user/cloudera/streamingdeptcountpython/cnt-1522540260000/part-00001
+(u'fitness', 4)
+(u'footwear', 4)
+(u'outdoors', 4)
+
+==================================================================
+
+### flume + spark streaming - integration ###
+
+- read data from /opt/gen_logs/logs/access.log via flume
+- write unprocessed data as well as streaming department count data to hdfs
+- development:
+	- update build.sbt
+	- create new program
+	- compile and build jar
+- run and validate:
+	- ship it to the cluster
+	- run flume agent
+	- run spark submit with python program
+	- validate whether files are being generated or not
+
+--set flume conf file with spark parameters
+
+--define properties with jar file / check to see if they are present
+[cloudera@quickstart lib]$ pwd
+/usr/lib/flume-ng/lib
+spark-streaming-flume-sink_2.10-1.6.0-cdh5.12.0.jar
+commons-lang-2.6.jar
+
+https://spark.apache.org/docs/1.6.3/streaming-flume-integration.html
+
+ agent.sinks = spark
+ agent.sinks.spark.type = org.apache.spark.streaming.flume.sink.SparkSink
+ agent.sinks.spark.hostname = <hostname of the local machine>
+ agent.sinks.spark.port = <port to listen on for connection from Spark>
+ agent.sinks.spark.channel = memoryChannel
+
+--flume config file
+# example.conf: A single-node Flume configuration
+
+# Name the components on this agent (sdc is agent name configured with 1 source[ws name], 1 sink[hdfs name], and 1 channel[mem name])
+sdc.sources = ws
+sdc.sinks = hd spark
+sdc.channels = hdmem sparkmem
+
+# Describe/configure the source (type exec)
+sdc.sources.ws.type  = exec
+sdc.sources.ws.command = tail -F /opt/gen_logs/logs/access.log
+
+# Describe the sink (type logger logs and prints messages on source exec web service)
+sdc.sinks.hd.type = hdfs
+sdc.sinks.hd.hdfs.path = hdfs://quickstart.cloudera:8020/user/cloudera/flume_demo
+
+sdc.sinks.hd.hdfs.filePrefix = FlumeDemo
+sdc.sinks.hd.hdfs.fileSuffix = .txt
+sdc.sinks.hd.hdfs.rollInterval = 120
+sdc.sinks.hd.hdfs.rollSize = 1048576
+sdc.sinks.hd.hdfs.rollCount = 100
+sdc.sinks.hd.hdfs.fileType = DataStream
+
+sdc.sinks.spark.type = org.apache.spark.streaming.flume.sink.SparkSink
+sdc.sinks.spark.hostname = quickstart.cloudera
+sdc.sinks.spark.port = 8123
+
+# Use a channel sdcich buffers events in memory
+sdc.channels.hdmem.type = memory
+sdc.channels.hdmem.capacity = 1000
+sdc.channels.hdmem.transactionCapacity = 100
+
+sdc.channels.sparkmem.type = memory
+sdc.channels.sparkmem.capacity = 1000
+sdc.channels.sparkmem.transactionCapacity = 100
+
+# Bind the source and sink to the channel (integrate source and sink with channel)
+sdc.sources.ws.channels = hdmem sparkmem
+sdc.sinks.hd.channel = hdmem
+sdc.sinks.spark.channel = sparkmem
+
+--launch flume agent
+[cloudera@quickstart strdeptcount]$ flume-ng agent -n sdc -f sdc.conf
+18/03/30 21:22:04 INFO hdfs.BucketWriter: Renaming hdfs://quickstart.cloudera:8020/user/cloudera/flume_demo/FlumeDemo.1522470035410.txt.tmp to hdfs://quickstart.cloudera:8020/user/cloudera/flume_demo/FlumeDemo.1522470035410.txt
+
+[cloudera@quickstart ~]$ hadoop fs -cat /user/cloudera/flume_demo/FlumeDemo.1522470035410.txt
+21.12.58.8 - - [30/Mar/2018:21:20:21 -0800] "GET /departments HTTP/1.1" 404 2175 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.153 Safari/537.36"
+134.76.237.36 - - [30/Mar/2018:21:20:22 -0800] "GET /departments HTTP/1.1" 200 2085 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.153 Safari/537.36"
+68.76.46.248 - - [30/Mar/2018:21:20:23 -0800] "GET /departments HTTP/1.1" 200 857 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.153 Safari/537.36"
+
+==================================================
+
+### flume + spark streaming - develop spark application ###
+
+https://spark.apache.org/docs/1.6.3/streaming-flume-integration.html
+
+from pyspark.streaming.flume import FlumeUtils
+flumeStream = FlumeUtils.createStream(streamingContext, [chosen machine's hostname], [chosen port])
+
+--spark streaming python program
+from pyspark import SparkConf, SparkContext
+from pyspark.streaming import StreamingContext
+from pyspark.streaming.flume import FlumeUtils
+import sys
+
+hostname = sys.argv[1]
+port = int(sys.argv[2])
+
+conf = SparkConf().\
+setAppName("Streaming Department Count").\
+setMaster("local[2]") #yarn mode not working on quickstart vm
+
+sc = SparkContext(conf=conf)
+ssc = StreamingContext(sc, 30)
+
+agents = [(hostname, port)]
+pollingStream = FlumeUtils.createPollingStream(ssc, agents)
+
+messages = pollingStream.map(lambda msg: msg[1])
+
+departmentMessages = messages.\
+filter(lambda msg: msg.split(" ")[6].split("/")[1] == "department")
+
+departmentNames = departmentMessages.\
+map(lambda msg: (msg.split(" ")[6].split("/")[2], 1))
+
+from operator import add
+
+departmentCount = departmentNames.\
+reduceByKey(add)
+
+outputPrefix = sys.argv[3]
+departmentCount.saveAsTextFiles(outputPrefix)
+
+ssc.start()
+ssc.awaitTermination() 
+
+==============================================================
+
+### flume + spark streaming - run program on cluster ###
+
+--find required jars
+[cloudera@quickstart /]$ cd /usr/lib/flume-ng/lib
+[cloudera@quickstart lib]$ ls -ltr | grep sdk
+-rw-r--r-- 1 root root   150173 Jun 29  2017 flume-ng-sdk-1.6.0-cdh5.12.0.jar
+lrwxrwxrwx 1 root root       32 Jul 19  2017 flume-ng-sdk.jar -> flume-ng-sdk-1.6.0-cdh5.12.0.jar
+[cloudera@quickstart lib]$ ls -ltr | grep spark
+-rw-r--r-- 1 root root    86096 Jun 29  2017 spark-streaming-flume-sink_2.10-1.6.0-cdh5.12.0.jar
+lrwxrwxrwx 1 root root       51 Jul 19  2017 spark-streaming-flume-sink.jar -> spark-streaming-flume-sink_2.10-1.6.0-cdh5.12.0.jar
+
+--start flume agent
+[cloudera@quickstart strdeptcount]$ cd /home/cloudera/flume_demo/strdeptcount
+[cloudera@quickstart strdeptcount]$ flume-ng agent -n sdc -f sdc.conf 
+
+--execute spark streaming job
+spark-submit --master local[2] \
+--jars "/usr/lib/flume-ng/lib/spark-streaming-flume-sink_2.10-1.6.0-cdh5.12.0.jar,/usr/lib/flume-ng/lib/flume-ng-sdk-1.6.0-cdh5.12.0.jar" \
+src/main/python/StreamingFlumeDepartmentCount.py \
+quickstart.cloudera 8123 \
+/user/cloudera/streamingflumedepartmentcount/cnt
+
+--check data in hdfs
+[cloudera@quickstart ~]$ hadoop fs -ls /user/cloudera/streamingflumedepartmentcount
+Found 3 items
+drwxr-xr-x   - cloudera cloudera          0 2018-03-31 17:29 /user/cloudera/streamingflumedepartmentcount/cnt-1522542540000
+drwxr-xr-x   - cloudera cloudera          0 2018-03-31 17:29 /user/cloudera/streamingflumedepartmentcount/cnt-1522542570000
+drwxr-xr-x   - cloudera cloudera          0 2018-03-31 17:30 /user/cloudera/streamingflumedepartmentcount/cnt-1522542600000
+[cloudera@quickstart ~]$ hadoop fs -ls /user/cloudera/streamingflumedepartmentcount/cnt-1522542540000
+Found 3 items
+-rw-r--r--   1 cloudera cloudera          0 2018-03-31 17:29 /user/cloudera/streamingflumedepartmentcount/cnt-1522542540000/_SUCCESS
+-rw-r--r--   1 cloudera cloudera         70 2018-03-31 17:29 /user/cloudera/streamingflumedepartmentcount/cnt-1522542540000/part-00000
+-rw-r--r--   1 cloudera cloudera         50 2018-03-31 17:29 /user/cloudera/streamingflumedepartmentcount/cnt-1522542540000/part-00001
+[cloudera@quickstart ~]$ hadoop fs -cat /user/cloudera/streamingflumedepartmentcount/cnt-1522542540000/part*
+(u'fan%20shop', 2)
+(u'apparel', 4)
+(u'golf', 1)
+(u'team%20sports', 2)
+(u'outdoors', 3)
+(u'footwear', 1)
+(u'fitness', 3)
+
+=============================================================
+
+### kafka + flume - integration, create config file ###
+
+- source: /opt/gen_logs/access.log
+- channel: memory
+- sink: kafka
+- validate:
+	- run kafka consume command to see data being streamed
+
+--prepare file
+[cloudera@quickstart flume_demo]$ cp -rf wslogs_to_hdfs wslogstokafka
+[cloudera@quickstart flume_demo]$ ls
+strdeptcount  wslogs_to_hdfs  wslogstokafka
+[cloudera@quickstart flume_demo]$ vim wslogstokafka/wshdfs.conf 
+[cloudera@quickstart flume_demo]$ cd wslogstokafka/
+[cloudera@quickstart wslogstokafka]$ mv wshdfs.conf wskafka.conf
+[cloudera@quickstart wslogstokafka]$ ls
+wskafka.conf
+
+--check flume verison
+[cloudera@quickstart wslogstokafka]$ flume-ng version
+Flume 1.6.0-cdh5.12.0
+
+--start kafka server / get broker port from zookeeper
+[cloudera@quickstart ~]$ sudo service kafka-server start
+[cloudera@quickstart ~]$ zookeeper-client
+[zk: localhost:2181(CONNECTED) 0] ls /brokers/ids
+[0]
+[zk: localhost:2181(CONNECTED) 2] get /brokers/ids/0
+{"listener_security_protocol_map":{"PLAINTEXT":"PLAINTEXT"},"endpoints":["PLAINTEXT://quickstart.cloudera:9092"],"jmx_port":-1,"host":"quickstart.cloudera","timestamp":"1522554227131","port":9092,"version":4}
+
+
+--modify flume config file
+# example.conf: A single-node Flume configuration
+# to read data from web server logs and publish to kafka topic
+# Name the components on this agent
+wk.sources = ws
+wk.sinks = kafka
+wk.channels = mem
+
+# Describe/configure the source (type exec)
+wk.sources.ws.type  = exec
+wk.sources.ws.command = tail -F /opt/gen_logs/logs/access.log
+
+# Describe the sink
+wk.sinks.kafka.type = org.apache.flume.sink.kafka.KafkaSink
+wk.sinks.kafka.bootstrap.servers = quickstart.cloudera:9092
+wk.sinks.kafka.topic = fkdemo
+
+# Use a channel wkich buffers events in memory
+wk.channels.mem.type = memory
+wk.channels.mem.capacity = 1000
+wk.channels.mem.transactionCapacity = 100
+
+# Bind the source and sink to the channel (integrate source and sink with channel)
+wk.sources.ws.channels = mem
+wk.sinks.kafka.channel = mem
+
+====================================================================
+
+### kafka + flume - run and validate ###
+
+[cloudera@quickstart wslogstokafka]$ flume-ng agent --name wk --conf-file /home/cloudera/flume_demo/wslogstokafka/wskafka.conf 
+
+--run kafka consumer to consume logs
+kafka-console-consumer.sh --bootstrap-server quickstart.cloudera:9092 --topic fkdemo --from-beginning
+...
+2.124.179.139 - - [31/Mar/2018:21:08:41 -0800] "GET /support HTTP/1.1" 200 2029 "-" "Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.153 Safari/537.36"
+145.135.63.7 - - [31/Mar/2018:21:08:42 -0800] "GET /department/fitness/categories HTTP/1.1" 200 1547 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_3) AppleWebKit/537.76.4 (KHTML, like Gecko) Version/7.0.4 Safari/537.76.4"
+
+--where to find logs containing data published to kafka topic 
+(can edit logs.dir in server.properties file)
+
+/usr/lib/kafka/config
+[cloudera@quickstart config]$ cat server.properties 
+# A comma seperated list of directories under which to store log files
+log.dirs=/tmp/kafka-logs
+
+/tmp/kafka-logs
+[root@quickstart kafka-logs]# cd fkdemo-0/
+[root@quickstart fkdemo-0]# ls
+00000000000000000000.index  00000000000000000000.log  00000000000000000000.timeindex
+[root@quickstart fkdemo-0]# view 00000000000000000000.log
+^@^@^@^@^@^@^@^@^@^@^@ùá^U^B[^A^@ÿÿÿÿÿÿÿÿÿÿÿÿ^@^@^@ã17.73.23.107 - - [31/Mar/2018:20:53:43 -0800] "GET /department/outdoors/categories HTTP/1.1" 200 358 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.125 
+
+======================================================================
+
+### kafka + spark streaming - department wise count/develop and build app ###
+
+- import necessary packages
+- create set for list of topics and dict for kafka broker list and other parameters
+- create input stream using relevant APIs by passing topics list and broker properties
+- process the data using relevant DStream APIs
+- download dependencies on the gateway node
+- ship the mode and run on the cluster including kafka dependencies
+
+--find kafka+spark streaming documentation based off spark version
+https://spark.apache.org/docs/1.6.3/streaming-kafka-integration.html
+
+--download this jar
+https://jar-download.com/?detail_search=g%3A%22org.apache.spark%22+AND+a%3A%22spark-streaming-kafka_2.10%22+AND+v%3A%221.6.3%22&a=spark-streaming-kafka_2.10
+
+--set kafka+spark streaming program
+[cloudera@quickstart ~]$ cp src/main/python/StreamingDepartmentCount.py src/main/python/StreamingKafkaDepartmentCount.py
+
+from pyspark import SparkConf, SparkContext
+from pyspark.streaming import StreamingContext
+from pyspark.streaming.kafka import KafkaUtils
+import sys
+
+conf = SparkConf().\
+setAppName("Streaming Department Count with Kafka").\
+setMaster("local[2]") #running processes causing issue w/ yarn resources on quickstart vm
+
+sc = SparkContext(conf=conf)
+ssc = StreamingContext(sc, 30)
+
+topics = ["fkdemo"]
+brokerList = {"metadata.broker.list":"quickstart.cloudera:9092"}
+directKafkaStream = KafkaUtils.createDirectStream(ssc, topics, brokerList)
+
+messages = directKafkaStream.map(lambda msg: msg[1])
+
+departmentMessages = messages.\
+filter(lambda msg: msg.split(" ")[6].split("/")[1] == "department")
+
+departmentNames = departmentMessages.\
+map(lambda msg: (msg.split(" ")[6].split("/")[2], 1))
+
+from operator import add
+
+departmentCount = departmentNames.\
+reduceByKey(add)
+
+outputPrefix = sys.argv[1]
+departmentCount.saveAsTextFiles(outputPrefix)
+
+ssc.start()
+ssc.awaitTermination() 
+
+===================================================================
+
+### kafka + spark streaming - run / validate application ###
+
+[cloudera@quickstart ~]$ spark-submit --master local[2] \
+--jars "/usr/lib/kafka/libs/spark-streaming-kafka_2.10-1.6.3.jar,/usr/lib/kafka/libs/kafka_2.11-0.10.2-kafka-2.2.0.jar,/usr/lib/kafka/libs/metrics-core-2.2.0.jar" \
+src/main/python/StreamingKafkaDepartmentCount.py /user/cloudera/streamingkafkadepartmentcount/cnt
+
+--view data
+[cloudera@quickstart ~]$ hdfs dfs -ls /user/cloudera/streamingkafkadepartmentcount/Found 3 items
+[cloudera@quickstart ~]$ hdfs dfs -ls /user/cloudera/streamingkafkadepartmentcount/cnt-1522618620000
+Found 3 items
+-rw-r--r--   1 cloudera cloudera          0 2018-04-01 14:37 /user/cloudera/streamingkafkadepartmentcount/cnt-1522618620000/_SUCCESS
+-rw-r--r--   1 cloudera cloudera         70 2018-04-01 14:37 /user/cloudera/streamingkafkadepartmentcount/cnt-1522618620000/part-00000
+-rw-r--r--   1 cloudera cloudera         34 2018-04-01 14:37 /user/cloudera/streamingkafkadepartmentcount/cnt-1522618620000/part-00001
+[cloudera@quickstart ~]$ hdfs dfs -cat /user/cloudera/streamingkafkadepartmentcount/cnt-1522618620000/part*
+(u'fan%20shop', 2)
+(u'apparel', 3)
+(u'golf', 2)
+(u'team%20sports', 2)
+(u'footwear', 2)
+(u'outdoors', 2)
+
+================================================
+
+### COMPLETE !!! ###
+
+===========================================
+
+### grp
