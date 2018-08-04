@@ -1,1 +1,284 @@
-# problem1
+### grp
+
+*****************
+1. sqoop import
+*****************
+
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--query "select count(*) from orders"
+
+------------------------
+| count(*)             | 
+------------------------
+| 68883                | 
+------------------------
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table orders \
+--map-column-java order_date=String \
+--compress \
+--compression-codec snappy \
+--as-avrodatafile \
+--target-dir /user/cloudera/problem1/orders \
+--delete-target-dir
+
+# make sure counts match
+
+hadoop fs -ls /user/cloudera/problem1/orders
+
+*****************
+2. sqoop import
+*****************
+
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--query "select count(*) from order_items"
+
+------------------------
+| count(*)             | 
+------------------------
+| 172198               | 
+------------------------
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table order_items \
+--compress \
+--compression-codec snappy \
+--as-avrodatafile \
+--target-dir /user/cloudera/problem1/orderItems \
+--delete-target-dir
+
+# make sure counts match
+
+hadoop fs -ls /user/cloudera/problem1/orderItems
+
+*****************
+3. spark df
+*****************
+
+pyspark --master yarn \
+--packages com.databricks:spark-csv_2.10:1.5.0,com.databricks:spark-avro_2.10:4.0.0
+
+import rlcompleter, readline
+readline.parse_and_bind("tab: complete")
+sqlContext.setConf("spark.sql.shuffle.partitions", "8")
+
+oP1 = sqlContext\
+.read\
+.format("com.databricks.spark.avro")\
+.load("/user/cloudera/problem1/orders")
+
+oP1.count()
+68883
+
+oiP1 = sqlContext\
+.read\
+.format("com.databricks.spark.avro")\
+.load("/user/cloudera/problem1/orderItems")
+
+oiP1.count()
+172198
+
+*****************
+4. spark sql
+*****************
+
+oP1.registerTempTable("query1")
+oiP1.registerTempTable("query2")
+
+# schema = [order_date, order_status, total_orders, total_amount]
+
+finalDF = sqlContext.sql \
+("""
+select 
+substr(order_date, 1, 10) as order_date,
+order_status,
+round(sum(order_item_subtotal),2) as total_amount,
+count(order_id) as total_orders
+from query1 a join query2 b
+on a.order_id = b.order_item_order_id
+group by order_date, order_status
+order by order_date desc, order_status asc, total_amount desc, total_orders asc
+""")
+
+finalDF.count()
+3165
+
+finalDF.show(10)
++----------+---------------+------------+------------+                          
+|order_date|   order_status|total_amount|total_orders|
++----------+---------------+------------+------------+
+|2014-07-24|       CANCELED|     1254.92|           6|
+|2014-07-24|         CLOSED|    16333.16|          86|
+|2014-07-24|       COMPLETE|    34552.03|         173|
+|2014-07-24|        ON_HOLD|     1709.74|           8|
+|2014-07-24| PAYMENT_REVIEW|      499.95|           1|
+|2014-07-24|        PENDING|    12729.49|          67|
+|2014-07-24|PENDING_PAYMENT|     17680.7|          96|
+|2014-07-24|     PROCESSING|     9964.74|          46|
+|2014-07-24|SUSPECTED_FRAUD|     2351.61|          12|
+|2014-07-23|       CANCELED|     5777.33|          25|
++----------+---------------+------------+------------+
+
+or
+
+from pyspark.sql import *
+from pyspark.sql.functions import *
+from pyspark.sql.types import *
+
+ordersJoin = oP1.join(oiP1,oP1.order_id == oiP1.order_item_order_id, "inner")
+
+udfDF = udf(lambda x: x[:10], StringType())
+ordersJoin = ordersJoin.withColumn("order_date", udfDF("order_date"))
+
+joinDF = ordersJoin\
+.groupBy("order_date", "order_status")\
+.agg(round(sum("order_item_subtotal"),2).alias("total_amount"),count("order_id").alias("total_orders"))\
+.orderBy(desc("order_date"),"order_status", desc("total_amount"), "total_orders")
+
+joinDF.count()
+3165
+
+joinDF.show(10)
++----------+---------------+------------+------------+                          
+|order_date|   order_status|total_amount|total_orders|
++----------+---------------+------------+------------+
+|2014-07-24|       CANCELED|     1254.92|           6|
+|2014-07-24|         CLOSED|    16333.16|          86|
+|2014-07-24|       COMPLETE|    34552.03|         173|
+|2014-07-24|        ON_HOLD|     1709.74|           8|
+|2014-07-24| PAYMENT_REVIEW|      499.95|           1|
+|2014-07-24|        PENDING|    12729.49|          67|
+|2014-07-24|PENDING_PAYMENT|     17680.7|          96|
+|2014-07-24|     PROCESSING|     9964.74|          46|
+|2014-07-24|SUSPECTED_FRAUD|     2351.61|          12|
+|2014-07-23|       CANCELED|     5777.33|          25|
++----------+---------------+------------+------------+
+
+**********************************
+5. spark write / compression (parquet / gzip)
+**********************************
+
+sqlContext.setConf("spark.sql.parquet.compression.codec", "gzip")
+finalDF.write.mode("overwrite").parquet("/user/cloudera/problem1/parquetGzip")
+
+hadoop fs -ls /user/cloudera/problem1/parquetGzip
+# file(s) will have *.gz.parquet
+# confirm with sample file
+hadoop parquet.tools.Main meta /user/cloudera/problem1/parquetGzip/<sampleFile>
+# columns will have GZIP
+
+**********************************
+6. spark write / compression (parquet / snappy)
+**********************************
+
+sqlContext.setConf("spark.sql.parquet.compression.codec", "snappy")
+finalDF.write.mode("overwrite").parquet("/user/cloudera/problem1/parquetSnappy")
+
+hadoop fs -ls /user/cloudera/problem1/parquetSnappy
+# file(s) will have *.snappy.parquet
+# confirm with sample file
+hadoop parquet.tools.Main meta /user/cloudera/problem1/parquetSnappy/<sampleFile>
+# columns will have SNAPPY
+
+**********************************
+7. spark write / compression (csv / uncompressed)
+**********************************
+
+finalDF.write.mode("overwrite").format("com.databricks.spark.csv").save("/user/cloudera/problem1/csvNoCompress")
+
+hadoop fs -ls /user/cloudera/problem1/csvNoCompress
+hadoop fs -cat /user/cloudera/problem1/csvNoCompress/* | wc -l
+3165
+
+or
+
+finalDF\
+.rdd\
+.map(lambda x: \
+str(x[0].encode("utf-8")) + "," + \
+str(x[1].encode("utf-8")) + "," + \
+str(x[2]) + "," + \
+str(x[3]))\
+.saveAsTextFile("/user/cloudera/problem1/csvNoCompressRDD")
+
+hadoop fs -ls /user/cloudera/problem1/csvNoCompressRDD
+hadoop fs -cat /user/cloudera/problem1/csvNoCompressRDD/* | wc -l
+3165
+
+# finalDF.write.mode("overwrite").format("com.databricks.spark.csv").option("codec", "gzip").save("/user/cloudera/problem1/csvGzip")
+# finalDF.write.mode("overwrite").format("com.databricks.spark.csv").option("codec", "snappy").save("/user/cloudera/problem1/csvSnappy")
+
+**********************************
+8. create mysql table + sqoop export
+**********************************
+
+mysql -u retail_dba -p
+
+use retail_db;
+
+drop table problem1;
+
+create table retail_db.problem1 (
+order_date varchar(50),
+order_status varchar(50),
+total_amount float,
+total_orders int,
+primary key(order_date, order_status)
+);
+
+truncate table problem1;
+
+sqoop export \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table problem1 \
+--export-dir /user/cloudera/problem1/csvNoCompress \
+--columns order_date,order_status,total_amount,total_orders
+
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--query "select count(*) from problem1"
+
+------------------------
+| count(*)             | 
+------------------------
+| 3165                 | 
+------------------------
+
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--query "select * from problem1 limit 10"
+
+----------------------------------------------------------------------------
+| order_date           | order_status         | total_amount | total_orders | 
+----------------------------------------------------------------------------
+| 2013-07-25           | CANCELED             | 429.97       | 2           | 
+| 2013-07-25           | CLOSED               | 11516.9      | 54          | 
+| 2013-07-25           | COMPLETE             | 20030.3      | 96          | 
+| 2013-07-25           | ON_HOLD              | 1899.84      | 12          | 
+| 2013-07-25           | PAYMENT_REVIEW       | 1419.74      | 6           | 
+| 2013-07-25           | PENDING              | 4887.46      | 24          | 
+| 2013-07-25           | PENDING_PAYMENT      | 17014        | 91          | 
+| 2013-07-25           | PROCESSING           | 10285.6      | 51          | 
+| 2013-07-25           | SUSPECTED_FRAUD      | 669.93       | 3           | 
+| 2013-07-26           | CANCELED             | 1329.85      | 8           | 
+----------------------------------------------------------------------------
+
+### grp
