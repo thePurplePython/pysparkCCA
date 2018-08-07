@@ -1,1 +1,243 @@
-# problem6
+### grp
+
+************************
+1/2. sqoop import all tables
+************************
+
+# via hive
+create database problem6;
+
+sqoop import-all-tables \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--warehouse-dir /user/hive/warehouse/problem6.db \
+--hive-import \
+--hive-database problem6 \
+--create-hive-table \
+--as-textfile \
+--num-mappers 4
+
+*******************************************
+3. spark sql (rank and sort) 
+[rank products within department by price and order by department ascending and rank descending]
+*******************************************
+
+pyspark --master yarn \
+--packages com.databricks:spark-csv_2.10:1.5.0,com.databricks:spark-avro_2.10:4.0.0
+
+import rlcompleter, readline
+readline.parse_and_bind("tab: complete")
+sqlContext.setConf("spark.sql.shuffle.partitions", "8")
+
+sqlContext.sql("use problem6")
+
+rankDF = sqlContext.sql\
+("""
+select d.department_id, 
+p.product_id, 
+p.product_name,
+p.product_price,
+rank() over (partition by department_id order by p.product_price) as product_price_rank,
+dense_rank() over (partition by department_id order by p.product_price) as product_price_dense_rank
+from products p
+join categories c on p.product_category_id = c.category_id
+join departments d on c.category_department_id = d.department_id
+order by department_id asc, product_price_rank desc, product_price_dense_rank desc
+""")
+
+rankDF.show(10)
++-------------+----------+--------------------+-------------+------------------+------------------------+
+|department_id|product_id|        product_name|product_price|product_price_rank|product_price_dense_rank|
++-------------+----------+--------------------+-------------+------------------+------------------------+
+|            2|        66|  SOLE F85 Treadmill|      1799.99|               168|                      56|
+|            2|        60| SOLE E25 Elliptical|       999.99|               167|                      55|
+|            2|        74|Goaliath 54" In-G...|       499.99|               166|                      54|
+|            2|       117|YETI Tundra 65 Ch...|       399.99|               164|                      53|
+|            2|       162|YETI Tundra 65 Ch...|       399.99|               164|                      53|
+|            2|        71|Diamondback Adult...|       349.98|               163|                      52|
+|            2|       127|Stiga Master Seri...|       329.99|               162|                      51|
+|            2|        68|Diamondback Adult...|       309.99|               161|                      50|
+|            2|        96|Teeter Hang Ups N...|       299.99|               154|                      49|
+|            2|       106|Teeter Hang Ups N...|       299.99|               154|                      49|
++-------------+----------+--------------------+-------------+------------------+------------------------+
+
+ # rank vs dense rank
+
+rankDF.orderBy("department_id", "product_price").show(10)
++-------------+----------+--------------------+-------------+------------------+------------------------+
+|department_id|product_id|        product_name|product_price|product_price_rank|product_price_dense_rank|
++-------------+----------+--------------------+-------------+------------------+------------------------+
+|            2|        38|Nike Men's Hyperv...|          0.0|                 1|                       1|
+|            2|       131|Nike Elite Crew B...|         14.0|                 2|                       2|
+|            2|       104|Nike Elite Crew B...|         14.0|                 2|                       2|
+|            2|        89|Nike Elite Crew B...|         14.0|                 2|                       2|
+|            2|       120|Nike Hyper Elite ...|         18.0|                 5|                       3|
+|            2|        64|Nike Women's Pro ...|        21.99|                 6|                       4|
+|            2|        39|Nike Women's Pro ...|        21.99|                 6|                       4|
+|            2|        99|Nike Women's Pro ...|        21.99|                 6|                       4|
+|            2|       119|Quest Oversized A...|        21.99|                 6|                       4|
+|            2|        80|Nike Women's Pro ...|        21.99|                 6|                       4|
++-------------+----------+--------------------+-------------+------------------+------------------------+
+
+*******************************************
+4. spark sql (aggregate)
+[find top 10 customers with most unique product purchases ... if more than one customer has the same number of product purchases then the customer with the lowest customer_id will take precedence]
+*******************************************
+
+aggDF = sqlContext.sql\
+("""
+select 
+c.customer_id, 
+concat(c.customer_fname, ' ', c.customer_lname) as customer, 
+count(distinct(oi.order_item_product_id)) as unique_products
+from customers c
+join orders o on c.customer_id = o.order_customer_id
+join order_items oi on o.order_id = oi.order_item_order_id
+group by c.customer_id, concat(c.customer_fname, ' ', c.customer_lname)
+order by unique_products desc, c.customer_id limit 10
+""")
+
+aggDF.show(10)
++-----------+----------------+---------------+                                  
+|customer_id|        customer|unique_products|
++-----------+----------------+---------------+
+|       1288| Evelyn Thompson|             17|
+|       1657|  Betty Phillips|             17|
+|       1810|    James Miller|             17|
+|      12226|  Nicholas Smith|             17|
+|       2292|    Ashley Smith|             16|
+|       2403|Christopher Hall|             16|
+|       3161|   Barbara Arias|             16|
+|       5691|     James Brown|             16|
+|       5715|     Kelly Smith|             16|
+|       8766|     Mary Duncan|             16|
++-----------+----------------+---------------+
+
+*******************************************
+5. spark sql (subqueries and filters)
+[on dataset from step 3, apply filter such that only products less than 100 are extracted]
+*******************************************
+
+rankDF.registerTempTable("filterSQL")
+
+filterDF = sqlContext\
+.sql("""select * from filterSQL where product_price < 100""")
+
+filterDF.show(10)
++-------------+----------+--------------------+-------------+------------------+------------------------+
+|department_id|product_id|        product_name|product_price|product_price_rank|product_price_dense_rank|
++-------------+----------+--------------------+-------------+------------------+------------------------+
+|            2|         7|Schutt Youth Recr...|        99.99|               105|                      33|
+|            2|        77|Schutt Youth Recr...|        99.99|               105|                      33|
+|            2|        78|Nike Kids' Grade ...|        99.99|               105|                      33|
+|            2|        88|Nike Kids' Grade ...|        99.99|               105|                      33|
+|            2|       113|Nike Men's Alpha ...|        99.99|               105|                      33|
+|            2|        91|Quest Q100 10' X ...|        99.98|               101|                      32|
+|            2|       105|Quest Q100 10' X ...|        99.98|               101|                      32|
+|            2|       133|Quest Q100 10' X ...|        99.98|               101|                      32|
+|            2|       152|Quest Q100 10' X ...|        99.98|               101|                      32|
+|            2|        56|Fitbit Flex Wirel...|        99.95|                99|                      31|
++-------------+----------+--------------------+-------------+------------------+------------------------+
+
+*******************************************
+7a. spark sql (write to hive)
+*******************************************
+
+sqlContext\
+.sql("""
+create table problem6.table1 as select * from filterSQL where product_price < 100""")
+
+sqlContext.sql("describe table1").show()
++--------------------+---------+-------+
+|            col_name|data_type|comment|
++--------------------+---------+-------+
+|       department_id|      int|   null|
+|          product_id|      int|   null|
+|        product_name|   string|   null|
+|       product_price|   double|   null|
+|  product_price_rank|      int|   null|
+|product_price_den...|      int|   null|
++--------------------+---------+-------+
+
+or
+
+hiveDF = sqlContext\
+.sql("""select * from filterSQL where product_price < 100""")
+
+hiveDF.write.mode("overwrite").saveAsTable("problem6.table2")
+
+sqlContext.sql("describe table2").show()
++--------------------+---------+-------+
+|            col_name|data_type|comment|
++--------------------+---------+-------+
+|       department_id|      int|       |
+|          product_id|      int|       |
+|        product_name|   string|       |
+|       product_price|   double|       |
+|  product_price_rank|      int|       |
+|product_price_den...|      int|       |
++--------------------+---------+-------+
+
+*******************************************
+6. spark sql (sql select & join)
+[on dataset from step 4, extract details of products purchased by top 10 customers which are priced at less than 100 USD per unit]
+*******************************************
+
+selectDF = sqlContext.sql(\
+"""
+select c.customer_id,
+concat(c.customer_fname, ' ', c.customer_lname) as customer,
+count(distinct(oi.order_item_product_id)) as unique_products
+from customers c
+join orders o on c.customer_id = o.order_customer_id
+join order_items oi on o.order_id = oi.order_item_order_id
+group by c.customer_id, concat(c.customer_fname, ' ', c.customer_lname)
+order by unique_products desc, c.customer_id limit 10
+""")
+
+selectDF.registerTempTable("selectSQL")
+
+joinDF = sqlContext.sql("""
+select distinct p.* from products p
+join order_items oi on oi.order_item_product_id = p.product_id
+join orders o on o.order_id = oi.order_item_order_id
+join selectSQL t on o.order_customer_id = t.customer_id
+where p.product_price < 100
+""")
+
+joinDF.show(10)
++----------+-------------------+--------------------+-------------------+-------------+--------------------+
+|product_id|product_category_id|        product_name|product_description|product_price|       product_image|
++----------+-------------------+--------------------+-------------------+-------------+--------------------+
+|       365|                 17|Perfect Fitness P...|                   |        59.99|http://images.acm...|
+|       835|                 37|Bridgestone e6 St...|                   |        31.99|http://images.acm...|
+|       905|                 40|Team Golf Texas L...|                   |        24.99|http://images.acm...|
+|      1014|                 46|O'Brien Men's Neo...|                   |        49.98|http://images.acm...|
+|       172|                  9|Nike Women's Temp...|                   |         30.0|http://images.acm...|
+|       565|                 26|adidas Youth Germ...|                   |         70.0|http://images.acm...|
+|       627|                 29|Under Armour Girl...|                   |        39.99|http://images.acm...|
+|       775|                 35|Clicgear 8.0 Shoe...|                   |         9.99|http://images.acm...|
+|       778|                 35|Bag Boy Beverage ...|                   |        24.99|http://images.acm...|
+|       893|                 40|Team Golf Pittsbu...|                   |        24.99|http://images.acm...|
++----------+-------------------+--------------------+-------------------+-------------+--------------------+
+
+*******************************************
+7b. spark sql (write to hive)
+*******************************************
+
+joinDF.write.mode("overwrite").saveAsTable("problem6.top10")
+
+sqlContext.sql("describe problem6.top10").show()
++-------------------+---------+-------+
+|           col_name|data_type|comment|
++-------------------+---------+-------+
+|         product_id|      int|       |
+|product_category_id|      int|       |
+|       product_name|   string|       |
+|product_description|   string|       |
+|      product_price|   double|       |
+|      product_image|   string|       |
++-------------------+---------+-------+
+
+### grp
