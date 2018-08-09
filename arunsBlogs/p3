@@ -1,1 +1,339 @@
-# problem3
+### grp
+
+**********************
+1. sqoop import all tables
+**********************
+
+sqoop import-all-tables \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--warehouse-dir /user/hive/warehouse/retail_stage.db/ \
+--as-avrodatafile \
+--compress \
+--compression-codec snappy
+
+# re-importing orders table with order_date mapped as string to maintain date format
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table orders \
+--map-column-java order_date=String \
+--as-avrodatafile \
+--compress \
+--compression-codec snappy \
+--target-dir /user/hive/warehouse/retail_stage.db/orders \
+--delete-target-dir
+
+**********************
+2. avro schema (create hive table via pyspark)
+**********************
+
+hadoop fs -get /user/hive/warehouse/retail_stage.db/orders/part-m-00000.avro
+avro-tools getschema part-m-00000.avro > orders.avsc
+hadoop fs -mkdir /user/hive/schemas
+hadoop fs -put orders.avsc /user/hive/schemas
+
+avro-tools getmeta part-m-00000.avro 
+avro.codec  snappy
+avro.schema {"type":"record","name":"orders","doc":"Sqoop import of orders","fields":[{"name":"order_id","type":["null","int"],"default":null,"columnName":"order_id","sqlType":"4"},{"name":"order_date","type":["null","string"],"default":null,"columnName":"order_date","sqlType":"93"},{"name":"order_customer_id","type":["null","int"],"default":null,"columnName":"order_customer_id","sqlType":"4"},{"name":"order_status","type":["null","string"],"default":null,"columnName":"order_status","sqlType":"12"}],"tableName":"orders"}
+
+pyspark --master yarn
+
+import rlcompleter, readline
+readline.parse_and_bind("tab: complete")
+
+sqlContext.setConf("spark.sql.shuffle.partitions", "8")
+sqlContext.sql("use default")
+
+sqlContext.sql("""
+create external table orderssqoop
+STORED AS AVRO
+LOCATION '/user/hive/warehouse/retail_stage.db/orders'
+TBLPROPERTIES('avro.schema.url'='/user/hive/schemas/orders.avsc')
+""")
+
+sqlContext.sql("describe orderssqoop").show()
++-----------------+---------+-------+
+|         col_name|data_type|comment|
++-----------------+---------+-------+
+|         order_id|      int|       |
+|       order_date|   string|       |
+|order_customer_id|      int|       |
+|     order_status|   string|       |
++-----------------+---------+-------+
+
+sqlContext.sql("select * from orderssqoop").show(10)
++--------+--------------------+-----------------+---------------+
+|order_id|          order_date|order_customer_id|   order_status|
++--------+--------------------+-----------------+---------------+
+|       1|2013-07-25 00:00:...|            11599|         CLOSED|
+|       2|2013-07-25 00:00:...|              256|PENDING_PAYMENT|
+|       3|2013-07-25 00:00:...|            12111|       COMPLETE|
+|       4|2013-07-25 00:00:...|             8827|         CLOSED|
+|       5|2013-07-25 00:00:...|            11318|       COMPLETE|
+|       6|2013-07-25 00:00:...|             7130|       COMPLETE|
+|       7|2013-07-25 00:00:...|             4530|       COMPLETE|
+|       8|2013-07-25 00:00:...|             2911|     PROCESSING|
+|       9|2013-07-25 00:00:...|             5657|PENDING_PAYMENT|
+|      10|2013-07-25 00:00:...|             5648|PENDING_PAYMENT|
++--------+--------------------+-----------------+---------------+
+
+**********************
+3. hive sql via pyspark
+**********************
+
+sqlContext\
+.sql("""
+select * from 
+(
+select a.*, 
+dense_rank() over (order by order_count desc) rnk 
+from 
+(
+select os.*, 
+count(1) over (partition by order_date) order_count 
+from orderssqoop os
+) a
+) b 
+where rnk = 1
+""")\
+.show(10)
++--------+--------------------+-----------------+---------------+-----------+---+
+|order_id|          order_date|order_customer_id|   order_status|order_count|rnk|
++--------+--------------------+-----------------+---------------+-----------+---+
+|   15793|2013-11-03 00:00:...|             6471|       COMPLETE|        347|  1|
+|   15794|2013-11-03 00:00:...|             5323|     PROCESSING|        347|  1|
+|   15795|2013-11-03 00:00:...|            10096|         CLOSED|        347|  1|
+|   15796|2013-11-03 00:00:...|            11665|       COMPLETE|        347|  1|
+|   15797|2013-11-03 00:00:...|             6249|PENDING_PAYMENT|        347|  1|
+|   15798|2013-11-03 00:00:...|            10736|       COMPLETE|        347|  1|
+|   15799|2013-11-03 00:00:...|             5475|       COMPLETE|        347|  1|
+|   15800|2013-11-03 00:00:...|             7417|     PROCESSING|        347|  1|
+|   15801|2013-11-03 00:00:...|             4021|       COMPLETE|        347|  1|
+|   15802|2013-11-03 00:00:...|             2284|         CLOSED|        347|  1|
++--------+--------------------+-----------------+---------------+-----------+---+
+
+**********************
+4. impala sql
+**********************
+
+invalidate metadata;
+
+select * from 
+(
+select a.*, 
+dense_rank() over (order by order_count desc) rnk 
+from 
+(
+select os.*, 
+count(1) over (partition by order_date) order_count 
+from orderssqoop os
+) a
+) b 
+where rnk = 1 limit 10;
++----------+-----------------------+-------------------+-----------------+-------------+-----+
+| order_id | order_date            | order_customer_id | order_status    | order_count | rnk |
++----------+-----------------------+-------------------+-----------------+-------------+-----+
+| 16002    | 2013-11-03 00:00:00.0 | 824               | COMPLETE        | 347         | 1   |
+| 16001    | 2013-11-03 00:00:00.0 | 2731              | PENDING         | 347         | 1   |
+| 16000    | 2013-11-03 00:00:00.0 | 8121              | COMPLETE        | 347         | 1   |
+| 15999    | 2013-11-03 00:00:00.0 | 8926              | PENDING         | 347         | 1   |
+| 15998    | 2013-11-03 00:00:00.0 | 2548              | ON_HOLD         | 347         | 1   |
+| 15997    | 2013-11-03 00:00:00.0 | 4260              | PENDING_PAYMENT | 347         | 1   |
+| 15996    | 2013-11-03 00:00:00.0 | 1083              | CANCELED        | 347         | 1   |
+| 15995    | 2013-11-03 00:00:00.0 | 4381              | ON_HOLD         | 347         | 1   |
+| 15994    | 2013-11-03 00:00:00.0 | 5621              | CLOSED          | 347         | 1   |
+| 15993    | 2013-11-03 00:00:00.0 | 2837              | PENDING_PAYMENT | 347         | 1   |
++----------+-----------------------+-------------------+-----------------+-------------+-----+
+
+**********************
+5. hive ddl via pyspark
+**********************
+
+sqlContext.sql("create database avro")
+sqlContext.sql("use avro")
+
+sqlContext\
+.sql("""
+create table ordersavro
+(
+order_id int,
+order_date string,
+order_customer_id int,
+order_status string
+)
+partitioned by (order_month string)
+STORED AS AVRO
+""")
+
+sqlContext.sql("set hive.exec.dynamic.partition=true")
+sqlContext.sql("set hive.exec.dynamic.partition.mode=nonstrict")
+
+sqlContext.sql("describe ordersavro").show(truncate=False)
++-----------------------+---------+-------+
+|col_name               |data_type|comment|
++-----------------------+---------+-------+
+|order_id               |int      |       |
+|order_date             |string   |       |
+|order_customer_id      |int      |       |
+|order_status           |string   |       |
+|order_month            |string   |null   |
+|# Partition Information|         |       |
+|# col_name             |data_type|comment|
+|order_month            |string   |null   |
++-----------------------+---------+-------+
+
+sqlContext\
+.sql("""
+insert overwrite table ordersavro partition (order_month)
+select
+order_id,
+order_date,
+order_customer_id,
+order_status,
+substr(order_date, 1, 7) as order_month
+from default.orderssqoop
+""")
+
+sqlContext.sql("select * from ordersavro").show(10)
++--------+--------------------+-----------------+---------------+-----------+
+|order_id|          order_date|order_customer_id|   order_status|order_month|
++--------+--------------------+-----------------+---------------+-----------+
+|   40468|2014-04-01 00:00:...|            11251|        ON_HOLD|    2014-04|
+|   40469|2014-04-01 00:00:...|              207|     PROCESSING|    2014-04|
+|   40470|2014-04-01 00:00:...|            12223|PENDING_PAYMENT|    2014-04|
+|   40471|2014-04-01 00:00:...|             8847|        ON_HOLD|    2014-04|
+|   40472|2014-04-01 00:00:...|             3697|PENDING_PAYMENT|    2014-04|
+|   40473|2014-04-01 00:00:...|             1466|       COMPLETE|    2014-04|
+|   40474|2014-04-01 00:00:...|             2734|PENDING_PAYMENT|    2014-04|
+|   40475|2014-04-01 00:00:...|              653|       COMPLETE|    2014-04|
+|   40476|2014-04-01 00:00:...|             4313|        PENDING|    2014-04|
+|   40477|2014-04-01 00:00:...|             4080|         CLOSED|    2014-04|
++--------+--------------------+-----------------+---------------+-----------+
+
+sqlContext\
+.sql("""
+select * from 
+(
+select a.*, 
+dense_rank() over (order by order_count desc) rnk 
+from 
+(
+select oa.*, 
+count(1) over (partition by order_date) order_count 
+from ordersavro oa
+) a
+) b 
+where rnk = 1
+""").show(10)
++--------+--------------------+-----------------+---------------+-----------+-----------+---+
+|order_id|          order_date|order_customer_id|   order_status|order_month|order_count|rnk|
++--------+--------------------+-----------------+---------------+-----------+-----------+---+
+|   15793|2013-11-03 00:00:...|             6471|       COMPLETE|    2013-11|        347|  1|
+|   15794|2013-11-03 00:00:...|             5323|     PROCESSING|    2013-11|        347|  1|
+|   15795|2013-11-03 00:00:...|            10096|         CLOSED|    2013-11|        347|  1|
+|   15796|2013-11-03 00:00:...|            11665|       COMPLETE|    2013-11|        347|  1|
+|   15797|2013-11-03 00:00:...|             6249|PENDING_PAYMENT|    2013-11|        347|  1|
+|   15798|2013-11-03 00:00:...|            10736|       COMPLETE|    2013-11|        347|  1|
+|   15799|2013-11-03 00:00:...|             5475|       COMPLETE|    2013-11|        347|  1|
+|   15800|2013-11-03 00:00:...|             7417|     PROCESSING|    2013-11|        347|  1|
+|   15801|2013-11-03 00:00:...|             4021|       COMPLETE|    2013-11|        347|  1|
+|   15802|2013-11-03 00:00:...|             2284|         CLOSED|    2013-11|        347|  1|
++--------+--------------------+-----------------+---------------+-----------+-----------+---+
+
+# make sure counts are same
+
+sqlContext.sql("select count(*) from default.orderssqoop").show()
++-----+
+|  _c0|
++-----+
+|68883|
++-----+
+sqlContext.sql("select count(*) from avro.ordersavro").show()
++-----+                                                                         
+|  _c0|
++-----+
+|68883|
++-----+
+
+**********************
+6. avro schema evolution
+**********************
+
+hadoop fs -get /user/hive/schemas/orders.avsc
+
+gedit orders.avsc
+
+{
+  "type" : "record",
+  "name" : "orders",
+  "doc" : "Sqoop import of orders",
+  "fields" : [ {
+    "name" : "order_id",
+    "type" : [ "null", "int" ],
+    "default" : null,
+    "columnName" : "order_id",
+    "sqlType" : "4"
+  }, {
+    "name" : "order_date",
+    "type" : [ "null", "string" ],
+    "default" : null,
+    "columnName" : "order_date",
+    "sqlType" : "93"
+  }, {
+    "name" : "order_customer_id",
+    "type" : [ "null", "int" ],
+    "default" : null,
+    "columnName" : "order_customer_id",
+    "sqlType" : "4"
+  },{
+    "name" : "order_style",
+    "type" : [ "null", "string" ],
+    "default" : null,
+    "columnName" : "order_style",
+    "sqlType" : "12"
+  }, {
+    "name" : "order_zone",
+    "type" : [ "null", "int" ],
+    "default" : null,
+    "columnName" : "order_zone",
+    "sqlType" : "4"
+  }, {
+    "name" : "order_status",
+    "type" : [ "null", "string" ],
+    "default" : null,
+    "columnName" : "order_status",
+    "sqlType" : "12"
+  } ],
+  "tableName" : "orders"
+}
+
+hadoop fs -put -f orders.avsc /user/hive/schemas/orders.avsc
+
+**********************
+7. hive insert into new avro schema
+**********************
+
+# via hive shell or beeline shell
+insert into table default.orderssqoop values(890000, '2018-03-05 15:50:46.956', 456789, 'NEW', '9999', 8);
+
+# via pyspark shell
+sqlContext.sql("select * from default.orderssqoop where order_style = 'NEW' AND order_zone = 9999").collect()
+[Row(order_id=890000, order_date=u'2018-03-05 15:50:46.956', order_customer_id=456789, order_style=u'NEW', order_zone=9999, order_status=u'8')]
+
+sqlContext.sql("describe default.orderssqoop").show()
++-----------------+---------+-------+
+|         col_name|data_type|comment|
++-----------------+---------+-------+
+|         order_id|      int|       |
+|       order_date|   string|       |
+|order_customer_id|      int|       |
+|      order_style|   string|       |
+|       order_zone|      int|       |
+|     order_status|   string|       |
++-----------------+---------+-------+
+
+### grp
