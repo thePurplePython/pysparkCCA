@@ -1,1 +1,222 @@
-# problem4
+### grp
+
+! note: if non-ascii character error occurs during saveAsTextFile() api append string column element with .encode("utf-8")
+    ex: str(x[0].encode("utf-8"))
+
+*********************************
+1/2/3. sqoop import (text/avro/parquet)
+*********************************
+
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--query "select count(*) from orders"
+
+------------------------
+| count(*)             | 
+------------------------
+| 68883                | 
+------------------------
+
+# make sure counts match for all file types
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera/retail_db \
+--username retail_dba \
+--password cloudera \
+--table orders \
+--as-textfile \
+--fields-terminated-by "\t" \
+--lines-terminated-by "\n" \
+--target-dir /user/cloudera/problem4/text \
+--delete-target-dir
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera/retail_db \
+--username retail_dba \
+--password cloudera \
+--table orders \
+--as-avrodatafile \
+--target-dir /user/cloudera/problem4/avro \
+--delete-target-dir
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera/retail_db \
+--username retail_dba \
+--password cloudera \
+--table orders \
+--as-parquetfile \
+--target-dir /user/cloudera/problem4/parquet \
+--delete-target-dir
+
+*********************************
+4. spark compression (avro source -> write)
+*********************************
+
+pyspark --master yarn --packages com.databricks:spark-avro_2.10:4.0.0,com.databricks:spark-csv_2.10:1.5.0
+
+import rlcompleter, readline
+readline.parse_and_bind("tab: complete")
+sqlContext.setConf("spark.sql.shuffle.partitions", "8")
+
+# source
+avroDF = sqlContext.read.format("com.databricks.spark.avro").load("/user/cloudera/problem4/avro")
+
+# write parquet + snappy
+sqlContext.setConf("spark.sql.parquet.compression.codec", "snappy")
+avroDF.write.mode("overwrite").parquet("/user/cloudera/problem4/parquetSnappy")
+# confirm compression via file(s) extension *.snappy.parquet or check via parquet.tools.Main meta
+
+# write text + gzip
+avroDF\
+.map(lambda x: str(x[0]) + "\t" + str(x[1]) + "\t" + str(x[2]) + "\t" + str(x[3]))\
+.saveAsTextFile("/user/cloudera/problem4/tfGzip", compressionCodecClass="org.apache.hadoop.io.compress.GzipCodec")
+# confirm compression via file(s) extension *.gz
+
+or
+
+avroDF\
+.write\
+.format("com.databricks.spark.csv")\
+.option("header", "false")\
+.option("codec", "gzip")\
+.option("delimiter", "\t")\
+.mode("overwrite")\
+.save("/user/cloudera/problem4/tfGzipCSV")
+# confirm compression via file(s) extension *.gz
+
+# write sequence + no compression
+avroDF\
+.map(lambda x: (str(x[0]), str(x[1])+"\t"+str(x[2])+"\t"+str(x[3])))\
+.saveAsSequenceFile("/user/cloudera/problem4/seq")
+# confirm file(s) are in binary sequence format by running hadoop fs -cat <sampleFile> | head & hadoop fs -text <sampleFile> | head to see data in non-binary form
+
+# write text + snappy
+avroDF\
+.map(lambda x: str(x[0]) + "\t" + str(x[1]) + "\t" + str(x[2]) + "\t" + str(x[3]))\
+.saveAsTextFile("/user/cloudera/problem4/tfSnappy", compressionCodecClass = "org.apache.hadoop.io.compress.SnappyCodec")
+# confirm compression via file(s) extension *.snappy
+
+or
+
+avroDF\
+.write\
+.format("com.databricks.spark.csv")\
+.option("delimiter", "\t")\
+.option("header", "false")\
+.option("codec", "snappy")\
+.mode("overwrite")\
+.save("/user/cloudera/problem4/tfSnappyCSV")
+# confirm compression via file(s) extension *.snappy
+
+*********************************
+5. spark compression (parquet snappy source -> write)
+*********************************
+
+# source
+parquetDF = sqlContext.read.parquet("/user/cloudera/problem4/parquetSnappy")
+
+# write parquet + no compression
+sqlContext.setConf("spark.sql.parquet.compression.codec", "uncompressed")
+parquetDF.write.mode("overwrite").parquet("/user/cloudera/problem4/parquetUncompressed")
+# confirm compression via file(s) extension *.parquet or check via parquet.tools.Main meta
+
+# write avro + snappy
+sqlContext.setConf("/spark.sql.avro.compression.codec", "snappy")
+parquetDF.write.mode("overwrite").format("com.databricks.spark.avro").save("/user/cloudera/problem4/avroSnappy")
+# confirm compression via avro-tools getmeta (codec snappy)
+
+or
+
+parquetDF.write.format("com.databricks.spark.avro").option("codec", "snappy").mode("overwrite").save("/user/cloudera/problem4/avroSnappyDB")
+# confirm compression via avro-tools getmeta (codec snappy)
+
+*********************************
+6. spark compression (avro snappy source -> write)
+*********************************
+
+# source
+avroSnappyDF = sqlContext.read.format("com.databricks.spark.avro").load("/user/cloudera/problem4/avroSnappy")
+
+#write json + no compression
+avroSnappyDF.toJSON().saveAsTextFile("/user/cloudera/problem4/json")
+# confirm json schema via hadoop fs -cat <sampleFile> | head
+
+#write json + gzip
+avroSnappyDF.toJSON().saveAsTextFile("/user/cloudera/problem4/jsonGzip", compressionCodecClass="org.apache.hadoop.io.compress.GzipCodec")
+# confirm json key:value schema structure via hadoop fs -cat <sampleFile> | head & compression via file(s) extension *.gz
+
+*********************************
+7. spark compression (json gzip source -> write)
+*********************************
+
+# source
+jsonGZipDF = sqlContext.read.json("/user/cloudera/problem4/jsonGzip")
+
+#write comma separated gzip
+jsonGZipDF\
+.map(lambda x: str(x[0]) + "," + str(x[1]) + "," + str(x[2]) + "," + str(x[3]))\
+.saveAsTextFile("/user/cloudera/problem4/comma", \
+compressionCodecClass="org.apache.hadoop.io.compress.GzipCodec")
+# confirm compression via file(s) extension *.gz 
+
+or
+
+jsonGZipDF\
+.write\
+.format("com.databricks.spark.csv")\
+.option("delimiter", ",")\
+.option("header", "false")\
+.option("codec", "gzip")\
+.mode("overwrite")\
+.save("/user/cloudera/problem4/commaDB")
+# confirm compression via file(s) extension *.gz 
+
+*********************************
+8. spark compression (sequence source -> write)
+*********************************
+
+from pyspark.sql import Row
+
+#write orc no compression
+seqOrcDF = sc.sequenceFile("/user/cloudera/problem4/seq")
+
+seqOrcDF.first()
+(u'1', u'1374735600000\t11599\tCLOSED')
+
+# tuples
+l = seqOrcDF.first()
+l[0]
+u'1'
+l[1]
+u'1374735600000\t11599\tCLOSED'
+
+orcDF = seqOrcDF\
+.map(lambda x: \
+Row(int(x[0]),\
+x[1].split("\t")[0],\
+int(x[1].split("\t")[1]),\
+x[1].split("\t")[2]))\
+.toDF(["order_id", "order_date", "order_customer", "order_status"])
+
+orcDF.show(10)
++--------+-------------+--------------+---------------+
+|order_id|   order_date|order_customer|   order_status|
++--------+-------------+--------------+---------------+
+|       1|1374735600000|         11599|         CLOSED|
+|       2|1374735600000|           256|PENDING_PAYMENT|
+|       3|1374735600000|         12111|       COMPLETE|
+|       4|1374735600000|          8827|         CLOSED|
+|       5|1374735600000|         11318|       COMPLETE|
+|       6|1374735600000|          7130|       COMPLETE|
+|       7|1374735600000|          4530|       COMPLETE|
+|       8|1374735600000|          2911|     PROCESSING|
+|       9|1374735600000|          5657|PENDING_PAYMENT|
+|      10|1374735600000|          5648|PENDING_PAYMENT|
++--------+-------------+--------------+---------------+
+
+orcDF.write.mode("overwrite").orc("/user/cloudera/problem4/orc")
+# confirm compression via file(s) extension *.orc 
+
+### grp
