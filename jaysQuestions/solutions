@@ -1,0 +1,642 @@
+### grp
+
+*************************************************************************************************************
+
+Problem 1:
+Import orders table from mysql (db: retail_db, user: retail_dba, password: cloudera)
+Import only records that are in “COMPLETE” status
+Import all columns other than customer id
+Save the imported data as text and tab delimited in this hdfs location /user/yourusername/problem1
+
+*************************************************************************************************************
+
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba -P \
+--query "select count(*) from orders where order_status = 'COMPLETE'"
+
+------------------------
+| count(*)             | 
+------------------------
+| 22899                | 
+------------------------
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba -P \
+--table orders \
+--columns order_id,order_date,order_status \
+--where "order_status = 'COMPLETE'" \
+--fields-terminated-by "\t" \
+--as-textfile \
+--target-dir /user/cloudera/grp/problem1 \
+--delete-target-dir
+
+# make sure counts match
+
+*************************************************************************************************************
+
+Problem 2:
+Import orders table from mysql (db: retail_db, user: retail_dba, password: cloudera)
+Import all records and columns from Orders table
+Save the imported data as text and tab delimited in this hdfs location /user/yourusername/problem2
+
+*************************************************************************************************************
+
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba -P \
+--query "select count(*) from orders"
+
+------------------------
+| count(*)             | 
+------------------------
+| 68883                | 
+------------------------
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba -P \
+--table orders \
+--fields-terminated-by "\t" \
+--as-textfile \
+--target-dir /user/cloudera/grp/problem2 \
+--delete-target-dir
+
+# make sure counts match
+
+*************************************************************************************************************
+
+Problem 3:
+Export orders data into mysql
+Input Source : /user/yourusername/problem2
+Target Table : mysqlDB = retail_db, table: orders_export
+
+*************************************************************************************************************
+
+mysql -u retail_dba -p
+
+use retail_dba;
+create table orders_export (
+order_id int,
+order_date datetime,
+order_customer_id int,
+order_status varchar(45)
+);
+
+hadoop fs -cat /user/cloudera/grp/problem2/* | wc -l
+68883
+
+sqoop export \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba -P \
+--table orders_export \
+--columns order_id,order_date,order_customer_id,order_status \
+--input-fields-terminated-by "\t" \
+--export-dir /user/cloudera/grp/problem2
+
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba -P \
+--query "select count(*) from orders_export"
+
+------------------------
+| count(*)             | 
+------------------------
+| 68883                | 
+------------------------
+
+# make sure counts match
+
+*************************************************************************************************************
+
+Problem 4:
+Read data from hive and perform transformation and save it back in HDFS
+Read table populated from Problem 3 (orders_export)
+Produce output in this format (2 fields), sort by order count in descending and save it as avro with snappy compression in hdfs location;
+/user/yourusername/problem4/avro-snappy
+
+ORDER_STATUS | ORDER_COUNT
+
+Save above output in avro snappy compression in avro format in hdfs location /user/yourusername//problem4/avro
+
+*************************************************************************************************************
+
+pyspark --master yarn --packages com.databricks:spark-avro_2.10:4.0.0,com.databricks:spark-csv_2.10:1.5.0
+
+import rlcompleter, readline
+readline.parse_and_bind("tab: complete")
+sqlContext.setConf("spark.sql.shuffle.partitions", "8")
+
+# using this database since orders (same as orders_export from problem3 above) table was created in this database via arunsBlogs
+sqlContext.sql("use problem6")
+
+p4DF = sqlContext\
+.sql("""
+select order_status, count(order_id) as order_count
+from orders group by order_status order by order_count desc
+""")
+
+p4DF.show()
++---------------+-----------+                                                   
+|   order_status|order_count|
++---------------+-----------+
+|       COMPLETE|      22899|
+|PENDING_PAYMENT|      15030|
+|     PROCESSING|       8275|
+|        PENDING|       7610|
+|         CLOSED|       7556|
+|        ON_HOLD|       3798|
+|SUSPECTED_FRAUD|       1558|
+|       CANCELED|       1428|
+| PAYMENT_REVIEW|        729|
++---------------+-----------+
+
+sqlContext.setConf("spark.sql.avro.compression.codec", "snappy") # not required if codec option is set in write below
+
+p4DF\
+.coalesce(8)\
+.write\
+.mode("overwrite")\
+.format("com.databricks.spark.avro")\
+.option("codec", "snappy")\
+.save("/user/cloudera/grp/problem4")
+
+# confirm snappy compression via avro-tools
+avro-tools getmeta hdfs://quickstart.cloudera:8020/user/cloudera/grp/problem4/part-r-00000-a66cac32-be64-4e5f-ad5e-1bbe6703c505.avro
+avro.codec	snappy
+avro.schema	{"type":"record","name":"topLevelRecord","fields":[{"name":"order_status","type":["string","null"]},{"name":"order_count","type":["long","null"]}]}
+
+*************************************************************************************************************
+
+Problem 5:
+///part1
+Import orders table from mysql (db: retail_db, user: retail_dba, password: cloudera)
+Import all records and columns from Orders table
+Save the imported data as avro and snappy compression in hdfs location /user/yourusername/problem5-avro-snappy
+/// part2
+Read above hdfs data
+Consider orders only in “COMPLETE” status and order id between 1000 and 50000 (1001 to 49999)
+Save the output (only 2 columns orderid and orderstatus) in parquet format with gzip compression in location /user/yourusername/problem5-parquet-gzip
+Advance : Try if you can save output only in 2 files (Tip : use coalesce(2))
+
+*************************************************************************************************************
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba -P \
+--table orders \
+--as-avrodatafile \
+--compress \
+--compression-codec snappy \
+--target-dir /user/cloudera/grp/problem5part1 \
+--delete-target-dir
+
+p5DF = sqlContext.read.format("com.databricks.spark.avro").load("/user/cloudera/grp/problem5part1")
+
+p5DF.registerTempTable("p5Filter")
+
+p5DFwrite = sqlContext.sql("select order_id, order_status from p5Filter where order_status = 'COMPLETE' and order_id between 1000 and 50000")
+
+sqlContext.setConf("spark.sql.parquet.compression.codec", "gzip")
+p5DFwrite.coalesce(2).write.mode("overwrite").parquet("/user/cloudera/grp/problem5part2")
+
+# confirm gzip compression via parquet.tools or just look for *.gz.parquet
+hadoop parquet.tools.Main meta /user/cloudera/grp/problem5part2/part-r-00000-59905338-b141-4fee-a70c-4ffaa23957b1.gz.parquet
+--------------------------------------------------------------------------------
+order_id:      INT32 GZIP DO:0 FPO:4 SZ:9340/26537/2.84 VC:6623 ENC:PL [more]...
+order_status:  BINARY GZIP DO:0 FPO:9344 SZ:115/77/0.67 VC:6623 ENC:RL [more]...
+
+*************************************************************************************************************
+
+Problem 6:
+///part1
+Import orders table from mysql (db: retail_db, user: retail_dba, password: cloudera)
+Import all records and columns from Orders table
+Save the imported data as text and tab delimitted in this hdfs location /user/yourusername/problem6/orders
+///part2
+Import order_items table from mysql (db: retail_db , user: retail_dba, password: cloudera)
+Import all records and columns from Order_items table
+Save the imported data as text and tab delimitted in this hdfs location /user/yourusername/problem6/order-items
+//part3
+Read orders data from above HDFS location
+Read order items data form above HDFS location
+Produce output in this format (price and total should be treated as decimals)
+Consider only CLOSED & COMPLETE orders
+
+ORDER_ID ORDER_ITEM_ID PRODUCT_PRICE ORDER_SUBTOTAL ORDER_TOTAL
+
+Note : ORDER_TOTAL = combined total price for this order
+///part4
+Save above output as ORC in hive table "orctable"
+(Tip : Try saving into hive table from DF directly without explicit table creation manually)
+Note : This problem updated on Jun 4 with more details to reduce ambiguity based on received feedback/comments from users. (Thank You )
+
+*************************************************************************************************************
+
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba -P \
+--query "select count(*) from orders"
+
+------------------------
+| count(*)             | 
+------------------------
+| 68883                | 
+------------------------
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba -P \
+--table orders \
+--fields-terminated-by "\t" \
+--as-textfile \
+--target-dir /user/cloudera/grp/problem6orders \
+--delete-target-dir
+
+# make sure counts match
+
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba -P \
+--query "select count(*) from order_items"
+
+------------------------
+| count(*)             | 
+------------------------
+| 172198               | 
+------------------------
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba -P \
+--table order_items \
+--fields-terminated-by "\t" \
+--as-textfile \
+--target-dir /user/cloudera/grp/problem6orderitems \
+--delete-target-dir
+
+# make sure counts match
+
+from pyspark.sql import Row
+
+orders = sc.textFile("/user/cloudera/grp/problem6orders")
+orderItems = sc.textFile("/user/cloudera/grp/problem6orderitems")
+
+oDF = orders\
+.map(lambda x: x.split("\t"))\
+.map(lambda x: Row(\
+int(x[0]),\
+x[1],\
+int(x[2]),\
+x[3]))\
+.toDF(["order_id", "order_date", "order_customer_id", "order_status"])
+
+oDF.printSchema()
+root
+ |-- order_id: long (nullable = true)
+ |-- order_date: string (nullable = true)
+ |-- order_customer_id: long (nullable = true)
+ |-- order_status: string (nullable = true)
+
+oDF.show(10)
++--------+--------------------+-----------------+---------------+
+|order_id|          order_date|order_customer_id|   order_status|
++--------+--------------------+-----------------+---------------+
+|       1|2013-07-25 00:00:...|            11599|         CLOSED|
+|       2|2013-07-25 00:00:...|              256|PENDING_PAYMENT|
+|       3|2013-07-25 00:00:...|            12111|       COMPLETE|
+|       4|2013-07-25 00:00:...|             8827|         CLOSED|
+|       5|2013-07-25 00:00:...|            11318|       COMPLETE|
+|       6|2013-07-25 00:00:...|             7130|       COMPLETE|
+|       7|2013-07-25 00:00:...|             4530|       COMPLETE|
+|       8|2013-07-25 00:00:...|             2911|     PROCESSING|
+|       9|2013-07-25 00:00:...|             5657|PENDING_PAYMENT|
+|      10|2013-07-25 00:00:...|             5648|PENDING_PAYMENT|
++--------+--------------------+-----------------+---------------+
+
+oiDF = orderItems\
+.map(lambda x: x.split("\t"))\
+.map(lambda x: Row(\
+int(x[0]),\
+int(x[1]),\
+int(x[2]),\
+int(x[3]),\
+float(x[4]),\
+float(x[5])))\
+.toDF(["order_item_id", "order_item_order_id", "order_item_product_id", "order_item_quantity", "order_item_subtotal", "order_item_product_price"])
+
+oiDF.printSchema()
+root
+ |-- order_item_id: long (nullable = true)
+ |-- order_item_order_id: long (nullable = true)
+ |-- order_item_product_id: long (nullable = true)
+ |-- order_item_quantity: long (nullable = true)
+ |-- order_item_subtotal: double (nullable = true)
+ |-- order_item_product_price: double (nullable = true)
+
+oiDF.show(10)
++-------------+-------------------+---------------------+-------------------+-------------------+------------------------+
+|order_item_id|order_item_order_id|order_item_product_id|order_item_quantity|order_item_subtotal|order_item_product_price|
++-------------+-------------------+---------------------+-------------------+-------------------+------------------------+
+|            1|                  1|                  957|                  1|             299.98|                  299.98|
+|            2|                  2|                 1073|                  1|             199.99|                  199.99|
+|            3|                  2|                  502|                  5|              250.0|                    50.0|
+|            4|                  2|                  403|                  1|             129.99|                  129.99|
+|            5|                  4|                  897|                  2|              49.98|                   24.99|
+|            6|                  4|                  365|                  5|             299.95|                   59.99|
+|            7|                  4|                  502|                  3|              150.0|                    50.0|
+|            8|                  4|                 1014|                  4|             199.92|                   49.98|
+|            9|                  5|                  957|                  1|             299.98|                  299.98|
+|           10|                  5|                  365|                  5|             299.95|                   59.99|
++-------------+-------------------+---------------------+-------------------+-------------------+------------------------+
+
+oDF.registerTempTable("oSQL")
+oiDF.registerTempTable("oiSQL")
+
+totalDF = sqlContext.sql("""
+select p.order_id, p.order_item_id, p.order_item_product_price, sum(p.order_item_subtotal) as order_total from (
+select o.order_id, oi.order_item_id, oi.order_item_product_price, oi.order_item_subtotal from oSQL o join oiSQL oi on o.order_id = oi.order_item_order_id where order_status in ('CLOSED', 'COMPLETE') group by o.order_id, oi.order_item_id, oi.order_item_product_price, oi.order_item_subtotal) p
+group by p.order_id, p.order_item_id, p.order_item_product_price
+""")
+
+totalDF.show(10)
++--------+-------------+------------------------+-----------+                   
+|order_id|order_item_id|order_item_product_price|order_total|
++--------+-------------+------------------------+-----------+
+|       7|           14|                  199.99|     199.99|
+|       7|           15|                  299.98|     299.98|
+|       7|           16|                   15.99|      79.95|
+|      15|           43|                    50.0|       50.0|
+|      15|           44|                  199.99|     199.99|
+|      15|           45|                   31.99|      95.97|
+|      15|           46|                   59.99|     179.97|
+|      15|           47|                  399.98|     399.98|
+|      63|          153|                  399.98|     399.98|
+|      63|          154|                   49.98|      99.96|
++--------+-------------+------------------------+-----------+
+
+totalDF.write.format("orc").mode("overwrite").saveAsTable("default.orctable")
+
+# confirm orc format
+for i in sqlContext.sql("describe formatted default.orctable").collect(): print(i)
+# look for these
+Row(result=u'SerDe Library:      \torg.apache.hadoop.hive.ql.io.orc.OrcSerde\t ')
+Row(result=u'InputFormat:        \torg.apache.hadoop.hive.ql.io.orc.OrcInputFormat\t ')
+Row(result=u'OutputFormat:       \torg.apache.hadoop.hive.ql.io.orc.OrcOutputFormat\t ')
+
+*************************************************************************************************************
+
+Problem 7:
+///part1
+Import order_items table from mysql (db: retail_db, user: retail_dba, password: cloudera)
+Import all records and columns from Order_items table
+Save the imported data as parquet in this hdfs location /user/yourusername/problem7/order-items
+///part2
+Import products table from mysql (db: retail_db, user: retail_dba, password: cloudera)
+Import all records and columns from products table
+Save the imported data as avro in this hdfs location /user/yourusername/problem7/products
+///part3
+Read above orderitems and products from HDFS location
+Produce this output:
+
+ORDER_ITEM_ORDER_ID PRODUCT_ID PRODUCT_NAME PRODUCT_PRICE ORDER_SUBTOTAL
+
+Save above output as avro snappy in hdfs location /user/yourusername/problem7/output-avro-snappy
+Note : This problem updated on Jun 4 with more details to reduce ambiguity based on received feedback/comments from users. (Thank You )
+
+*************************************************************************************************************
+
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba -P \
+--query "select count(*) from order_items"
+
+------------------------
+| count(*)             | 
+------------------------
+| 172198               | 
+------------------------
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba -P \
+--table order_items \
+--as-parquetfile \
+--target-dir /user/cloudera/grp/problem7orderitems \
+--delete-target-dir
+
+# make sure counts match
+
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba -P \
+--query "select count(*) from products"
+
+------------------------
+| count(*)             | 
+------------------------
+| 1345                 | 
+------------------------
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba -P \
+--table products \
+--as-avrodatafile \
+--target-dir /user/cloudera/grp/problem7products \
+--delete-target-dir
+
+# match sure counts match
+
+dfParquet = sqlContext.read.parquet("/user/cloudera/grp/problem7orderitems")
+dfAvro = sqlContext.read.format("com.databricks.spark.avro").load("/user/cloudera/grp/problem7products")
+
+dfParquet.registerTempTable("pSQL")
+dfAvro.registerTempTable("aSQL")
+
+# adding order_item_id to avoid displaying duplicates
+finalDF = sqlContext.sql("""
+select oi.order_item_id, oi.order_item_order_id, p.product_id, p.product_name, p.product_price,
+oi.order_item_subtotal
+from pSQL oi join aSQL p on oi.order_item_product_id = p.product_id
+""")
+
+finalDF.show(10)
++-------------+-------------------+----------+--------------------+-------------+-------------------+
+|order_item_id|order_item_order_id|product_id|        product_name|product_price|order_item_subtotal|
++-------------+-------------------+----------+--------------------+-------------+-------------------+
+|       129149|              51686|       403|Nike Men's CJ Eli...|       129.99|             129.99|
+|       129150|              51687|       403|Nike Men's CJ Eli...|       129.99|             129.99|
+|       129151|              51687|       403|Nike Men's CJ Eli...|       129.99|             129.99|
+|       129152|              51687|      1014|O'Brien Men's Neo...|        49.98|              249.9|
+|       129153|              51687|       191|Nike Men's Free 5...|        99.99|             399.96|
+|       129154|              51687|       191|Nike Men's Free 5...|        99.99|             499.95|
+|       129155|              51688|       627|Under Armour Girl...|        39.99|              79.98|
+|       129156|              51688|       191|Nike Men's Free 5...|        99.99|              99.99|
+|       129157|              51688|       835|Bridgestone e6 St...|        31.99|             159.95|
+|       129158|              51688|       502|Nike Men's Dri-FI...|         50.0|              250.0|
++-------------+-------------------+----------+--------------------+-------------+-------------------+
+
+sqlContext.setConf("spark.sql.avro.compression.codec", "snappy") # not needed if codec option is used
+finalDF\
+.write\
+.mode("overwrite")\
+.format("com.databricks.spark.avro")\
+.option("codec", "snappy")\
+.save("/user/cloudera/grp/problem7out")
+
+# confirm snappy compression via avro-tools
+avro-tools getmeta hdfs://quickstart.cloudera:8020/user/cloudera/grp/problem7out/part-r-00000-824dce34-dab0-43d1-9731-c5f24ad88ba5.avro
+avro.codec	snappy
+avro.schema	{"type":"record","name":"topLevelRecord","fields":[{"name":"order_item_id","type":["int","null"]},{"name":"order_item_order_id","type":["int","null"]},{"name":"product_id","type":["int","null"]},{"name":"product_name","type":["string","null"]},{"name":"product_price","type":["float","null"]},{"name":"order_item_subtotal","type":["float","null"]}]}
+
+*************************************************************************************************************
+
+Problem 8:
+///part1
+Read order item from /user/yourusername//problem7/order-items/
+Read products from /user/yourusername//problem7/products/
+///part2
+Produce output that shows product id and total no. of orders for each product id.
+Output should be in this format… sorted by order count descending
+If any product id has no order then order count for that product id should be “0”
+
+PRODUCT_ID PRODUCT_PRICE ORDER_COUNT
+
+Output should be saved as sequence file with Key=ProductID , Value = PRODUCT_ID|PRODUCT_PRICE|ORDER_COUNT (pipe separated)
+
+*************************************************************************************************************
+
+oi = sqlContext.read.parquet("/user/cloudera/grp/problem7orderitems")
+p = sqlContext.read.format("com.databricks.spark.avro").load("/user/cloudera/grp/problem7products")
+
+oi.registerTempTable("oiSQL")
+p.registerTempTable("pSQL")
+
+finalDF = sqlContext.sql(
+"""
+select product_id, product_price, count(order_item_id) as order_count
+from pSQL p left join oiSQL oi on p.product_id = oi.order_item_product_id
+group by product_id, product_price
+"""
+)
+
+finalDF.show(20)
++----------+-------------+-----------+
+|product_id|product_price|order_count|
++----------+-------------+-----------+
+|         2|       129.99|          0|
+|        10|       129.99|          0|
+|        22|        29.99|          0|
+|        31|         99.0|          0|
+|        69|       179.97|          0|
+|        90|       199.99|          0|
+|        95|         70.0|          0|
+|       110|        29.99|          0|
+|       127|       329.99|         27|
+|       135|         22.0|        308|
+|       138|        69.99|          0|
+|       142|        29.99|          0|
+|       152|        99.98|          0|
+|       154|        69.99|          0|
+|       158|        29.99|          0|
+|       175|         30.0|          0|
+|       183|         99.0|          0|
+|       202|       349.98|          0|
+|       210|       199.98|          0|
+|       218|        79.99|          0|
++----------+-------------+-----------+
+
+finalDF.rdd.map(lambda x: (int(x[0]), str(x[0]) + "|" + str(x[1]) + "|" + str(x[2]))).saveAsSequenceFile("/user/cloudera/grp/problem8seq")
+
+# view sequenceFile data
+hadoop fs -text /user/cloudera/grp/problem8seq/part-00000 | head
+2	2|129.990005493|0
+10	10|129.990005493|0
+22	22|29.9899997711|0
+31	31|99.0|0
+69	69|179.970001221|0
+90	90|199.990005493|0
+95	95|70.0|0
+110	110|29.9899997711|0
+127	127|329.989990234|27
+135	135|22.0|308
+
+*************************************************************************************************************
+
+Problem 9
+///part1
+Import orders table from mysql (db: retail_db, user: retail_dba, password: cloudera)
+Import all records and columns from Orders table
+Save the imported data as avro in this hdfs location /user/yourusername/problem9/orders-avro
+///part2
+Read above Avro orders data
+Convert to JSON
+Save JSON text file in hdfs location /user/yourusername/problem9/orders-json
+///part3
+Read json data from /user/yourusername/problem9/orders-json
+Consider only “COMPLETE” orders.
+Save orderid and order status (just 2 columns) as JSON text file in location /user/yourusername/problem9/orders-mini-json/
+
+*************************************************************************************************************
+
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba -P \
+--query "select count(*) from orders"
+
+------------------------
+| count(*)             | 
+------------------------
+| 68883                | 
+------------------------
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba -P \
+--table orders \
+--as-avrodatafile \
+--target-dir /user/cloudera/grp/problem9part1 \
+--delete-target-dir
+
+# make sure counts match
+
+p9DF = sqlContext.read.format("com.databricks.spark.avro").load("/user/cloudera/grp/problem9part1")
+
+p9DF.toJSON().saveAsTextFile("/user/cloudera/grp/problem9part2")
+
+# confirm json schema
+hadoop fs -cat /user/cloudera/grp/problem9part2/part-00000 | head
+{"order_id":1,"order_date":1374735600000,"order_customer_id":11599,"order_status":"CLOSED"}
+{"order_id":2,"order_date":1374735600000,"order_customer_id":256,"order_status":"PENDING_PAYMENT"}
+{"order_id":3,"order_date":1374735600000,"order_customer_id":12111,"order_status":"COMPLETE"}
+{"order_id":4,"order_date":1374735600000,"order_customer_id":8827,"order_status":"CLOSED"}
+{"order_id":5,"order_date":1374735600000,"order_customer_id":11318,"order_status":"COMPLETE"}
+{"order_id":6,"order_date":1374735600000,"order_customer_id":7130,"order_status":"COMPLETE"}
+{"order_id":7,"order_date":1374735600000,"order_customer_id":4530,"order_status":"COMPLETE"}
+{"order_id":8,"order_date":1374735600000,"order_customer_id":2911,"order_status":"PROCESSING"}
+{"order_id":9,"order_date":1374735600000,"order_customer_id":5657,"order_status":"PENDING_PAYMENT"}
+{"order_id":10,"order_date":1374735600000,"order_customer_id":5648,"order_status":"PENDING_PAYMENT"}
+
+p9DFjson = sqlContext.read.json("/user/cloudera/grp/problem9part2")
+p9DFjson.registerTempTable("jsonSQL")  
+
+jsonOUT = sqlContext.sql("select order_id, order_status from jsonSQL where order_status = 'COMPLETE'")
+
+jsonOUT.toJSON().saveAsTextFile("/user/cloudera/problem9part3")
+
+# confirm json scheme
+hadoop fs -cat /user/cloudera/problem9part3/part-00000 | head
+{"order_id":3,"order_status":"COMPLETE"}
+{"order_id":5,"order_status":"COMPLETE"}
+{"order_id":6,"order_status":"COMPLETE"}
+{"order_id":7,"order_status":"COMPLETE"}
+{"order_id":15,"order_status":"COMPLETE"}
+{"order_id":17,"order_status":"COMPLETE"}
+{"order_id":22,"order_status":"COMPLETE"}
+{"order_id":26,"order_status":"COMPLETE"}
+{"order_id":28,"order_status":"COMPLETE"}
+{"order_id":32,"order_status":"COMPLETE"}
+
+### grp
