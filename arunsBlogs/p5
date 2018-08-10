@@ -1,1 +1,294 @@
-# problem5
+### grp
+
+! note: complete pre-work specified in blog to preform environment before solving the problem statements
+
+****************************
+1. sqoop import (etl)
+****************************
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera/retail_db \
+--username retail_dba -P \
+--table products_replica \
+--where "product_id >= 1 and product_id <= 1000" \
+--lines-terminated-by "\n" \
+--fields-terminated-by "|" \
+--null-string "NOT-AVAILABLE" \
+--null-non-string -1 \
+--as-textfile \
+--num-mappers 3 \
+--target-dir /user/cloudera/problem5/products_text \
+--delete-target-dir
+
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera/retail_db \
+--username retail_dba -P \
+--query "select count(*) from products_replica where product_id >= 1 and product_id <= 1000"
+
+------------------------
+| count(*)             | 
+------------------------
+| 1000                 | 
+------------------------
+
+# make sure counts match
+
+****************************
+2. sqoop import (etl)
+****************************
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera/retail_db \
+--username retail_dba -P \
+--table products_replica \
+--where "product_id <= 1111" \
+--lines-terminated-by "\n" \
+--fields-terminated-by "*" \
+--null-string "NA" \
+--null-non-string -1000 \
+--as-textfile \
+--num-mappers 2 \
+--target-dir /user/cloudera/problem5/products_text_part1 \
+--delete-target-dir
+
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera/retail_db \
+--username retail_dba -P \
+--query "select count(*) from products_replica where product_id <= 1111"
+
+------------------------
+| count(*)             | 
+------------------------
+| 1111                 | 
+------------------------
+
+# make sure counts match
+
+****************************
+3. sqoop import (etl)
+****************************
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table products_replica \
+--where "product_id > 1111" \
+--lines-terminated-by "\n" \
+--fields-terminated-by "*" \
+--null-string "NA" \
+--null-non-string -1000 \
+--as-textfile \
+--num-mappers 5 \
+--target-dir /user/cloudera/problem5/products_text_part2 \
+--delete-target-dir
+
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--query "select count(*) from products_replica where product_id > 1111"
+
+------------------------
+| count(*)             | 
+------------------------
+| 240                  | 
+------------------------
+
+# make sure counts match
+
+****************************
+4. sqoop merge
+****************************
+
+sqoop merge \
+--class-name products_replica \
+--jar-file /tmp/sqoop-cloudera/compile/e92f57246c4abe1fe3c9409c77ba7bd9/products_replica.jar \
+--new-data /user/cloudera/problem5/products_text_part2 \
+--onto /user/cloudera/problem5/products_text_part1 \
+--merge-key product_id \
+--target-dir /user/cloudera/problem5/products_merge
+
+# make sure count totals match (1111 + 234 = 1345)
+hadoop fs -cat /user/cloudera/problem5/products_merge/part-r-00000 | wc -l
+1345
+
+****************************
+5. sqoop import (incremental load with mysql)
+****************************
+
+sqoop job --create first_sqoop_job \
+-- import --connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table products_replica \
+--target-dir /user/cloudera/problem5/products_incremental \
+--incremental append \
+--check-column product_id \
+--last-value 0 \
+--as-textfile
+
+sqoop job --exec first_sqoop_job
+
+insert into products_replica values (1346,2,'something 1','something 2',300.00,'not avaialble',3,'STRONG');
+insert into products_replica values (1347,5,'something 787','something 2',356.00,'not avaialble',3,'STRONG');
+
+sqoop job --exec first_sqoop_job
+# INFO mapreduce.ImportJobBase: Retrieved 2 records.
+
+#validate record count (1347)
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba --password cloudera \
+--query "select count(*) from products_replica"
+
+------------------------
+| count(*)             | 
+------------------------
+| 1347                 | 
+------------------------
+
+insert into products_replica values (1376,4,'something 1376','something 2',1.00,'not avaialble',3,'WEAK');
+insert into products_replica values (1365,4,'something 1376','something 2',10.00,'not avaialble',null,'NOT APPLICABLE');
+
+sqoop job --exec first_sqoop_job
+# INFO mapreduce.ImportJobBase: Retrieved 2 records.
+
+# validate record count (1349)
+sqoop eval \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba --password cloudera \
+--query "select count(*) from products_replica"
+
+------------------------
+| count(*)             | 
+------------------------
+| 1349                 | 
+------------------------
+
+****************************
+6. sqoop + hive import (incremental load with hive)
+****************************
+
+# via hive shell or beeline shell
+create database problem5;
+use problem5;
+create table products_hive (product_id int, product_category_id int, product_name string, product_description string, product_price float, product_imaage string,product_grade int, product_sentiment string);
+
+sqoop import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba --password cloudera \
+--table products_replica \
+--hive-import \
+--hive-table products_hive \
+--hive-database problem5
+
+truncate table products_hive;
+
+sqoop job \
+--create hive_sqoop_job \
+-- import \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table products_replica \
+--check-column product_id \
+--incremental append \
+--last-value 0 \
+--hive-import \
+--hive-table products_hive \
+--hive-database problem5
+
+sqoop job --exec hive_sqoop_job
+
+# current hive record count (1349)
+
+# insert into mysql products_replica table to test hive incremental load is working properly
+insert into products_replica values (1378,4,'something 1376','something 2',10.00,'not avaialble',null,'NOT APPLICABLE');
+insert into products_replica values (1379,4,'something 1376','something 2',10.00,'not avaialble',null,'NOT APPLICABLE');
+
+sqoop job --exec hive_sqoop_job
+# INFO mapreduce.ImportJobBase: Retrieved 2 records.
+
+select count(*) from problem5.products_hive;
+1351
+
+****************************
+7. sqoop + hive export to mysql
+****************************
+
+# via mysql
+use retail_db;
+create table products_external (product_id int(11) primary Key, product_grade int(11), product_category_id int(11), product_name varchar(100), product_description varchar(100), product_price float, product_impage varchar(500), product_sentiment varchar(100));
+use problem5;
+insert into table products_hive values (1380,4,'something 1380','something 2',8.00,'not avaialble',3,'NOT APPLICABLE');
+insert into table products_hive values (1381,4,'something 1380','something 2',8.00,'not avaialble',3,'NOT APPLICABLE');
+select count(*) from products_hive;
+1353
+
+sqoop export \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table products_external \
+--columns product_id,product_category_id,product_name,product_description,product_price,product_impage,product_grade,product_sentiment \
+--input-fields-terminated-by "\001" \
+--input-null-non-string "null" \
+--input-null-string "null" \
+--export-dir /user/hive/warehouse/problem5.db/products_hive
+
+select count(*) from products_external;
+1353
+
+***column order is source (hive) order, but column name must match destination (mysql) mapping***
+
+ex:
+
+mysql> describe products_external;
++---------------------+--------------+------+-----+---------+-------+
+| Field               | Type         | Null | Key | Default | Extra |
++---------------------+--------------+------+-----+---------+-------+
+| product_id          | int(11)      | NO   | PRI | NULL    |       |
+| product_grade       | int(11)      | YES  |     | NULL    |       |
+| product_category_id | int(11)      | YES  |     | NULL    |       |
+| product_name        | varchar(100) | YES  |     | NULL    |       |
+| product_description | varchar(100) | YES  |     | NULL    |       |
+| product_price       | float        | YES  |     | NULL    |       |
+| product_impage      | varchar(500) | YES  |     | NULL    |       |
+| product_sentiment   | varchar(100) | YES  |     | NULL    |       |
++---------------------+--------------+------+-----+---------+-------+
+
+hive> describe problem5.products_hive;
+OK
+product_id          	int                 	                    
+product_category_id 	int                 	                    
+product_name        	string              	                    
+product_description 	string              	                    
+product_price       	float               	                    
+product_imaage      	string              	                    
+product_grade       	int                 	                    
+product_sentiment   	string              	                    
+
+insert into table products_hive values (1382,4,'something 1380','something 2',8.00,'not avaialble',3,'NOT APPLICABLE');
+insert into table products_hive values (1383,4,'something 1380','something 2',8.00,'not avaialble',3,'NOT APPLICABLE');
+
+select count(*) from products_hive;
+1355
+
+sqoop export \
+--connect jdbc:mysql://quickstart.cloudera:3306/retail_db \
+--username retail_dba \
+--password cloudera \
+--table products_external \
+--columns product_id,product_category_id,product_name,product_description,product_price,product_impage,product_grade,product_sentiment \
+--input-fields-terminated-by "\001" \
+--input-null-non-string "null" \
+--input-null-string "null" \
+--update-mode allowinsert \
+--update-key product_id \
+--export-dir /user/hive/warehouse/problem5.db/products_hive
+
+select count(*) from products_external;
+1355
+
+### grp
