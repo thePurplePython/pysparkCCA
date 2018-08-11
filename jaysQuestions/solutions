@@ -626,7 +626,7 @@ jsonOUT = sqlContext.sql("select order_id, order_status from jsonSQL where order
 
 jsonOUT.toJSON().saveAsTextFile("/user/cloudera/problem9part3")
 
-# confirm json scheme
+# confirm json schema
 hadoop fs -cat /user/cloudera/problem9part3/part-00000 | head
 {"order_id":3,"order_status":"COMPLETE"}
 {"order_id":5,"order_status":"COMPLETE"}
